@@ -1,0 +1,21 @@
+char2phonem
+	* cleaning
+		* remove and keep track of punctuation OK
+		* remove odd characters OK
+	* char2phonem translation
+		* gruut backend OK
+	* postprocessing
+		* put punctuation back OK
+	* save to cache
+		* pickle 
+		* hdf5 ?? 
+
+tokenizer
+	* phon2token OK
+
+basic tacotron2 modules
+	* embedding
+	* 3 conv layers
+	* bidirectional lstm
+	* location sensitive attention
+	* ...
