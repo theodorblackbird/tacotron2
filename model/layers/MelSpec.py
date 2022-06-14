@@ -44,5 +44,3 @@ class MelSpec(tf.keras.layers.Layer):
             log_mel_spec = tfio.audio.dbscale(mel, top_db=80)
             return log_mel_spec
 
-        )
-        return config

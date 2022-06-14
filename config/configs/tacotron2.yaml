@@ -17,13 +17,20 @@ decoder:
         lsattention:
                 rnn_dim: 512
                 embed_dim: 512
-                att_dim: 512
-                att_n_filters: 512
-                att_ker_size: [3]
+                att_dim: 128
+                att_n_filters: 32
+                att_ker_size: 31
         
         dec_rnn_units: 256 
 
         char_embedding_size: 512
+
+        postnet:
+                filters: 32
+                n: 5
+                kernel_size: 31
+                dropout_rate: 0.5
+
 
 n_mel_channels: 80
 n_frames_per_step: 10

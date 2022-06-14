@@ -13,6 +13,7 @@ class EncConvLayer(tf.keras.layers.Layer):
         self.bn = tf.keras.layers.BatchNormalization()
         self.dropout = tf.keras.layers.Dropout(
                 rate=dropout_rate)
+        self.support_masking = True
     def call(self, x, training=False):
         y = self.conv(x)
         y = self.bn(y, training=training)
