@@ -103,11 +103,17 @@ class DecConvLayer(Layer):
 
 
 class Postnet(Layer):
-    def __init__(self, filters, n, n_mel_channels, kernel_size, dropout_rate):
+    def __init__(self, 
+            filters, 
+            n,
+            n_mel_channels,
+            kernel_size,
+            dropout_rate,
+            n_frames_per_step):
         self.layers = Sequential()
         for i in range(0, n):
             self.layers.add(DecConvLayer(filters, kernel_size, dropout_rate))
-        self.layers.add(Dense(n_mel_channels))
+        self.layers.add(Dense(n_mel_channels * n_frames_per_step))
     
     def __call__(self, x):
         return self.layers(x)

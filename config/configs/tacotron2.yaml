@@ -37,7 +37,7 @@ n_frames_per_step: 10
 
 train_data:
         transcript_path: "preprocess/metadata_pp.csv"
-        audio_dir: "~/LJSpeech-1.1/wavs"
+        audio_dir: "/home/theodor/LJSpeech-1.1/wavs"
 
 mel_spec:
         frame_length: 1024

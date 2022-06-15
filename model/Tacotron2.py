@@ -8,6 +8,7 @@ from model.layers.Decoder import LSAttention, Prenet, Postnet
 from model.layers.MelSpec import MelSpec
 
 from preprocess.gruut_phonem import gruutPhonem
+from datasets.ljspeech import generate_map_func
 
 class Encoder(tf.keras.layers.Layer):
     def __init__(self, config):
@@ -60,7 +61,8 @@ class Decoder(tf.keras.layers.Layer):
                 dc["postnet"]["n"],
                 config["n_mel_channels"],
                 dc["postnet"]["kernel_size"],
-                dc["postnet"]["dropout_rate"])
+                dc["postnet"]["dropout_rate"],
+                config["n_frames_per_step"])
 
 
     def prepare_decoder(self, enc_out):
@@ -95,7 +97,7 @@ class Decoder(tf.keras.layers.Layer):
         dec_output = self.lin_proj_dense(dec_hidden_att_context)
         gate_output = self.gate_dense(dec_hidden_att_context)
 
-        return dec_hidden_att_context, gate_output
+        return dec_output, gate_output
 
 
 
@@ -131,17 +133,12 @@ class Tacotron2(tf.keras.Model):
     def __init__(self, config: Tacotron2Config) -> None:
         super(Tacotron2, self).__init__()
          
-        text = tf.data.TextLineDataset(config["train_data"]["transcript_path"])
-        text = text.map(ljspeech_map_func)
 
         self.tokenizer = tf.keras.layers.TextVectorization(split=self.tv_func)
-        self.tokenizer.adapt(text.batch(64))
         
         self.phonem = gruutPhonem()
         self.config = config
-        self.char_embedding = tf.keras.layers.Embedding(self.tokenizer.vocabulary_size(), 
-                config["encoder"]["char_embedding_size"],
-                mask_zero=True)
+
         self.encoder = Encoder(self.config["encoder"])
         self.decoder = Decoder(self.config)
 
@@ -154,19 +151,26 @@ class Tacotron2(tf.keras.Model):
                 melconf["n_mel_channels"],
                 melconf["freq_min"],
                 melconf["freq_max"])
+    
+    def set_vocabulary(self, dataset, n_batch=64):
+        self.tokenizer.adapt(dataset.batch(n_batch))
+        self.char_embedding = tf.keras.layers.Embedding(self.tokenizer.vocabulary_size(), 
+                self.config["encoder"]["char_embedding_size"],
+                mask_zero=True)
 
     def __call__(self, x):
-
-        x = self.tokenizer(x)
+        
+        phon, mels = x
+        x = self.tokenizer(phon)
         x = self.char_embedding(x)
         y = self.encoder(x)
 
         mel_test = tf.ones([x.shape[0], 80, 1000])
-        mels, gates = self.decoder(y, mel_test)
-        print("mel shape : ", mels.shape)
+
+        crop = mels.shape[0] - mels.shape[0]%self.config["n_frames_per_step"]#max_len must be a multiple of n_frames_per_step
+        mels, gates = self.decoder(y, mels[:,:,:crop])
 
         residual = self.decoder.postnet(mels)
-
         mels = mels + residual
         return mels, gates
 
@@ -177,21 +181,21 @@ class Tacotron2(tf.keras.Model):
 
 
 
-def ljspeech_map_func(x):
-    x = tf.strings.split(x, sep='|')[1]
-    return x
+    def ljspeech_map_func(x):
+        x = tf.strings.split(x, sep='|')[1]
+        return x
 
 if __name__ == "__main__":
     tac_conf = Tacotron2Config("config/configs/tacotron2.yaml")
     tac = Tacotron2(tac_conf)
 
-    
     ljspeech_text = tf.data.TextLineDataset(tac_conf["train_data"]["transcript_path"])
-    ljspeech_text = ljspeech_text.map(ljspeech_map_func)
+    tac.set_vocabulary(ljspeech_text.map(lambda x : tf.strings.split(x, sep='|')[1]))
+    map_F = generate_map_func(tac_conf)
+    ljspeech_text = ljspeech_text.map(map_F)
 
-    batch = next(iter(ljspeech_text.batch(16)))
-    print(bytes.decode(batch.numpy()[0]))
-    mels, gates = tac(batch)
+    x, y = next(iter(ljspeech_text.padded_batch(16)))
+    mels, gates = tac((x,y))
     
     print("output shape : ", mels[0].shape)
 
