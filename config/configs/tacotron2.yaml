@@ -2,6 +2,7 @@ train:
         batch_size: 2
         epochs: 100
         optimizer: 'adam'
+        drop_remainder: True
 
 
 encoder:

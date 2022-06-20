@@ -73,6 +73,7 @@ class LSAttention(Layer):
     def __call__(self, att_hs, memory, W_memory):
 
         alignment = self.alignment_score(att_hs, W_memory)
+        alignment = tf.where(memory._keras_mask, alignment, -float("inf"))
         att_weights = tf.nn.softmax(alignment, axis=1)
         att_context = tf.matmul(tf.expand_dims(att_weights, 1), memory)
         att_context = tf.squeeze(att_context)

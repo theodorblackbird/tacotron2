@@ -17,7 +17,7 @@ import numpy as np
 class Encoder(tf.keras.layers.Layer):
     def __init__(self, config): 
         super().__init__()
-
+    
         self.encoder_conv = tf.keras.Sequential([EncConvLayer(
             config["conv_layer"]["filter"],
             config["conv_layer"]["kernel_size"], 
@@ -119,11 +119,14 @@ class Decoder(tf.keras.layers.Layer):
         mel_gt = tf.transpose(mel_gt, perm=[1,0,2])
         mel_gt = tf.concat([first_mel_frame, mel_gt], 0)
 
+
+
         mel_gt = self.prenet(mel_gt)
 
         mels_out, gates_out = [], []
         
         self.prepare_decoder(enc_out)
+
         for i in range(len(mel_gt)-1):
 
             mel_in = mel_gt[i]
@@ -167,7 +170,7 @@ class Tacotron2(tf.keras.Model):
 
     def call(self, batch, training=False):
 
-        phon, mels = batch
+        phon, mels, mels_len = batch
         mels = tf.transpose(mels, perm=[0,2,1])
 
         x = self.tokenizer(phon)
@@ -176,11 +179,13 @@ class Tacotron2(tf.keras.Model):
 
 
         crop = mels.shape[2] - mels.shape[2]%self.config["n_frames_per_step"]#max_len must be a multiple of n_frames_per_step
+        mels_len = tf.clip_by_value(mels_len, 0, crop)
         mels, gates = self.decoder(y, mels[:,:,:crop])
 
         residual = self.decoder.postnet(mels)
         mels_post = mels + residual
-        return (mels, mels_post), gates
+        
+        return (mels, mels_post, mels_len), gates
 
     @staticmethod
     def tv_func(x):

@@ -27,8 +27,8 @@ def generate_map_func(conf):
                 msc["freq_max"])
         mel_spec = mel_spec_gen(audio)
         gate = tf.zeros_like(mel_spec)
-
-        return (phon, mel_spec), (mel_spec, gate)
+        mel_len = len(mel_spec)
+        return (phon, mel_spec, mel_len), (mel_spec, gate)
     return map_func
 
 """
