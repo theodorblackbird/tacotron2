@@ -11,7 +11,7 @@ class MelSpec(tf.keras.layers.Layer):
             num_mel_channels=80,
             freq_min=125,
             freq_max=7600,
-            **kwargs,
+            **kwargs
             ):
         super().__init__(**kwargs)
         self.frame_length = frame_length

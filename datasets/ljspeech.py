@@ -12,7 +12,7 @@ def generate_map_func(conf):
         
         split = tf.strings.split(x, sep='|')
         name = split[0]
-        phon = split[1]
+        phon = split[1:2]
         path = conf["train_data"]["audio_dir"] + "/"+ name + ".wav"
         raw_audio = tf.io.read_file(path)
         audio, sr = tf.audio.decode_wav(raw_audio)
@@ -26,8 +26,9 @@ def generate_map_func(conf):
                 msc["freq_min"],
                 msc["freq_max"])
         mel_spec = mel_spec_gen(audio)
-        mel_spec = tf.transpose(mel_spec, perm=[1,0])
-        return phon, mel_spec
+        gate = tf.zeros_like(mel_spec)
+
+        return (phon, mel_spec), (mel_spec, gate)
     return map_func
 
 """

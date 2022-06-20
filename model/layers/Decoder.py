@@ -47,7 +47,7 @@ class LSAttention(Layer):
     def prepare_attention(self, batch):
         batch_size = batch.shape[0]
         max_len = batch.shape[1]
-        encoder_dim = batch.shape[1]
+        encoder_dim = batch.shape[2]
 
         self.att_weights = tf.zeros([batch_size, max_len])
         self.cum_att_weights = tf.zeros_like(self.att_weights)
@@ -110,10 +110,11 @@ class Postnet(Layer):
             kernel_size,
             dropout_rate,
             n_frames_per_step):
+        super().__init__()
         self.layers = Sequential()
         for i in range(0, n):
             self.layers.add(DecConvLayer(filters, kernel_size, dropout_rate))
-        self.layers.add(Dense(n_mel_channels * n_frames_per_step))
+        self.layers.add(Dense(n_mel_channels))
     
     def __call__(self, x):
         return self.layers(x)

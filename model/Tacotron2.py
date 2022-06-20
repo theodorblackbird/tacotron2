@@ -1,5 +1,6 @@
 import tensorflow as tf
 from tensorflow.python.ops.gen_array_ops import concat
+from tensorflow.python.ops.math_ops import reduce_mean
 
 from config.config import Tacotron2Config
 from model.tokenizer import Tokenizer
@@ -10,9 +11,13 @@ from model.layers.MelSpec import MelSpec
 from preprocess.gruut_phonem import gruutPhonem
 from datasets.ljspeech import generate_map_func
 
+import numpy as np
+
+
 class Encoder(tf.keras.layers.Layer):
-    def __init__(self, config):
-        
+    def __init__(self, config): 
+        super().__init__()
+
         self.encoder_conv = tf.keras.Sequential([EncConvLayer(
             config["conv_layer"]["filter"],
             config["conv_layer"]["kernel_size"], 
@@ -95,6 +100,7 @@ class Decoder(tf.keras.layers.Layer):
         dec_hidden_att_context = tf.concat([self.dec_hidden, self.att_context], 1)
 
         dec_output = self.lin_proj_dense(dec_hidden_att_context)
+        dec_output = tf.reshape(dec_output, [-1, self.config["n_frames_per_step"], self.config["n_mel_channels"]])
         gate_output = self.gate_dense(dec_hidden_att_context)
 
         return dec_output, gate_output
@@ -118,24 +124,25 @@ class Decoder(tf.keras.layers.Layer):
         mels_out, gates_out = [], []
         
         self.prepare_decoder(enc_out)
-        for mel_in in mel_gt :
+        for i in range(len(mel_gt)-1):
+
+            mel_in = mel_gt[i]
 
             mel_out, gate_out = self.decode(mel_in, enc_out, self.W_enc_out)
         
             mels_out.append(mel_out)
             gates_out.append(gate_out)
-        return tf.stack(mels_out, 0), tf.stack(gates_out, 0)
 
+        return tf.concat(mels_out, 1), tf.concat(gates_out, 1)
 
 
 
 class Tacotron2(tf.keras.Model):
     def __init__(self, config: Tacotron2Config) -> None:
         super(Tacotron2, self).__init__()
-         
 
         self.tokenizer = tf.keras.layers.TextVectorization(split=self.tv_func)
-        
+
         self.phonem = gruutPhonem()
         self.config = config
 
@@ -158,29 +165,41 @@ class Tacotron2(tf.keras.Model):
                 self.config["encoder"]["char_embedding_size"],
                 mask_zero=True)
 
-    def __call__(self, x):
-        
-        phon, mels = x
+    def call(self, batch, training=False):
+
+        phon, mels = batch
+        mels = tf.transpose(mels, perm=[0,2,1])
+
         x = self.tokenizer(phon)
         x = self.char_embedding(x)
         y = self.encoder(x)
 
-        mel_test = tf.ones([x.shape[0], 80, 1000])
 
-        crop = mels.shape[0] - mels.shape[0]%self.config["n_frames_per_step"]#max_len must be a multiple of n_frames_per_step
+        crop = mels.shape[2] - mels.shape[2]%self.config["n_frames_per_step"]#max_len must be a multiple of n_frames_per_step
         mels, gates = self.decoder(y, mels[:,:,:crop])
 
         residual = self.decoder.postnet(mels)
-        mels = mels + residual
-        return mels, gates
+        mels_post = mels + residual
+        return (mels, mels_post), gates
 
     @staticmethod
     def tv_func(x):
         x = tf.strings.unicode_split(x, 'UTF-8')
         return x
 
+    @staticmethod
+    def criterion(y_pred, y_true):
+        mels, gates = y_pred
+        mels_pre, mels_post = mels
+        mels_true, gates_true = y_true
+        gates_true = tf.reduce_mean(gates_true, axis=1)
 
+        loss = tf.reduce_mean(tf.square(mels_pre - mels_true)) + \
+                tf.reduce_mean(tf.square(mels_post - mels_true)) + \
+                tf.nn.sigmoid_cross_entropy_with_logits(gates_true, gates)
+        return loss
 
+    @staticmethod
     def ljspeech_map_func(x):
         x = tf.strings.split(x, sep='|')[1]
         return x
@@ -190,14 +209,11 @@ if __name__ == "__main__":
     tac = Tacotron2(tac_conf)
 
     ljspeech_text = tf.data.TextLineDataset(tac_conf["train_data"]["transcript_path"])
-    tac.set_vocabulary(ljspeech_text.map(lambda x : tf.strings.split(x, sep='|')[1]))
+    tac.set_vocabulary(ljspeech_text.map(lambda x : tf.strings.split(x, sep='|')[0]))
     map_F = generate_map_func(tac_conf)
     ljspeech_text = ljspeech_text.map(map_F)
 
-    x, y = next(iter(ljspeech_text.padded_batch(16)))
-    mels, gates = tac((x,y))
+    x, y = next(iter(ljspeech_text.padded_batch(16, padding_values=((None, None), (None, 1.)) )))
+    mels, gates = tac(x)
     
-    print("output shape : ", mels[0].shape)
-
-
-
+    print("output shape : ", mels[1].shape)
