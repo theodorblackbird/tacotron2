@@ -73,7 +73,7 @@ class Decoder(tf.keras.layers.Layer):
         self.lsattention_layer.prepare_attention(enc_out)
 
         dc = self.config["decoder"]
-        batch_size = enc_out.shape[0]
+        batch_size = tf.shape(enc_out)[0]
 
         self.att_hidden = tf.zeros([batch_size, dc["lsattention"]["rnn_dim"]])
         self.att_cell = self.att_rnn.get_initial_state(None, batch_size, dtype=tf.float32)
@@ -108,12 +108,12 @@ class Decoder(tf.keras.layers.Layer):
     def __call__(self, enc_out, mel_gt):
         
         #first mel frame input
-        first_mel_frame = tf.zeros([1, enc_out.shape[0], self.config["n_mel_channels"] * self.config["n_frames_per_step"]])
+        first_mel_frame = tf.zeros([1, tf.shape(enc_out)[0], self.config["n_mel_channels"] * self.config["n_frames_per_step"]])
 
         #reshape mel_gt in order to group frames by reduction factor
         #it implies that given mel spec length is a multiple of n_frames_per_step
         #(batch_size x n_mel_channels x L) -> (batch_size x n_mel_channels * n_frames_per_step x L // n_frames_per_step ) 
-        mel_gt = tf.reshape(mel_gt, [mel_gt.shape[0], mel_gt.shape[-1] // self.config["n_frames_per_step"], -1])
+        mel_gt = tf.reshape(mel_gt, [tf.shape(mel_gt)[0], tf.shape(mel_gt)[-1] // self.config["n_frames_per_step"], -1])
         mel_gt = tf.transpose(mel_gt, perm=[1,0,2])
         mel_gt = tf.concat([first_mel_frame, mel_gt], 0)
 
@@ -175,7 +175,7 @@ class Tacotron2(tf.keras.Model):
         y = self.encoder(x)
 
 
-        crop = mels.shape[2] - mels.shape[2]%self.config["n_frames_per_step"]#max_len must be a multiple of n_frames_per_step
+        crop = tf.shape(mels)[2] - tf.shape(mels)[2]%self.config["n_frames_per_step"]#max_len must be a multiple of n_frames_per_step
         mels_len = tf.clip_by_value(mels_len, 0, crop)
         mels, gates = self.decoder(y, mels[:,:,:crop])
 
@@ -218,4 +218,3 @@ if __name__ == "__main__":
     x, y = next(iter(ljspeech_text.padded_batch(16, padding_values=((None, None), (None, 1.)) )))
     mels, gates = tac(x)
     
-    print("output shape : ", mels[1].shape)

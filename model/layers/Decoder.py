@@ -45,9 +45,9 @@ class LSAttention(Layer):
 
 
     def prepare_attention(self, batch):
-        batch_size = batch.shape[0]
-        max_len = batch.shape[1]
-        encoder_dim = batch.shape[2]
+        batch_size = tf.shape(batch)[0]
+        max_len = tf.shape(batch)[1]
+        encoder_dim = tf.shape(batch)[2]
 
         self.att_weights = tf.zeros([batch_size, max_len])
         self.cum_att_weights = tf.zeros_like(self.att_weights)

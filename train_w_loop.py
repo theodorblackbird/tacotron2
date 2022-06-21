@@ -60,7 +60,7 @@ if __name__ == "__main__":
                 
                 true_gate = true_gate[:,1:crop,:]
                 true_gate = tf.reduce_mean(true_gate, axis = 2)
-                one_slice = tf.expand_dims(tf.ones(true_gate.shape[0]), 1)
+                one_slice = tf.expand_dims(tf.ones(tf.shape(true_gate)[0]), 1)
                 true_gate = tf.concat([true_gate, one_slice], 1)
                 true_gate = true_gate[:,::conf["n_frames_per_step"]]
 
