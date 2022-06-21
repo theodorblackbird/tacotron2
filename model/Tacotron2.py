@@ -86,6 +86,8 @@ class Decoder(tf.keras.layers.Layer):
 
     def decode(self, mel_in, enc_out, W_enc_out):
         att_rnn_in = tf.concat([mel_in, self.lsattention_layer.att_context], -1)
+        print(att_rnn_in.shape)
+        print(self.att_cell)
         self.att_hidden, self.att_cell = self.att_rnn(att_rnn_in, self.att_cell)
 
         self.att_context = self.lsattention_layer(
