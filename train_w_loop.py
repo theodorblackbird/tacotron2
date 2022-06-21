@@ -11,7 +11,7 @@ if __name__ == "__main__":
     initialize model
     """
 
-    conf = Tacotron2Config("config/configs/tacotron2.yaml")
+    conf = Tacotron2Config("config/configs/tacotron2_laptop.yaml")
     tac = Tacotron2(conf)
     train_conf = conf["train"]
     
@@ -76,3 +76,5 @@ if __name__ == "__main__":
 
                 grads = tape.gradient(loss, tac.trainable_weights)
                 optimizer.apply_gradients(zip(grads, tac.trainable_weights))
+
+                tac.save("test")

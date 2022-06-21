@@ -164,7 +164,8 @@ class Tacotron2(tf.keras.Model):
         self.char_embedding = tf.keras.layers.Embedding(self.tokenizer.vocabulary_size(), 
                 self.config["encoder"]["char_embedding_size"],
                 mask_zero=True)
-
+    
+    @tf.function
     def call(self, batch, training=False):
 
         phon, mels, mels_len = batch
