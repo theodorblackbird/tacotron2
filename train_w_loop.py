@@ -1,5 +1,5 @@
-import tensorflow as tf
 import time
+import tensorflow as tf
 from config.config import Tacotron2Config
 from datasets.ljspeech import generate_map_func
 from model.Tacotron2 import Tacotron2
@@ -10,27 +10,32 @@ if __name__ == "__main__":
     """
     initialize model
     """
+
     conf = Tacotron2Config("config/configs/tacotron2.yaml")
     tac = Tacotron2(conf)
+    train_conf = conf["train"]
+    
     """
     initalize dataset
     """
-    batch_size = conf["train"]["batch_size"]
+    
+    batch_size = train_conf["batch_size"]
     ljspeech_text = tf.data.TextLineDataset(conf["train_data"]["transcript_path"])
     tac.set_vocabulary(ljspeech_text.map(lambda x : tf.strings.split(x, sep='|')[1])) #initialize tokenizer and char. embedding
     map_F = generate_map_func(conf)
     ljspeech = ljspeech_text.map(map_F)
+    
     """
     padding values :
         input : (phonem, mel spec), output : (mel spec, gate)
     """
+    
     ljspeech = ljspeech.padded_batch(batch_size, 
             padding_values=((None, None, None), (None, 1.)),
-            drop_remainder=conf["train"]["drop_remainder"])
+            drop_remainder=train_conf["drop_remainder"])
 
-
-    optimizer = conf["train"]["optimizer"]
-    epochs = conf["train"]["epochs"]
+    optimizer = train_conf["optimizer"]
+    epochs = train_conf["epochs"]
 
     optimizer = tf.keras.optimizers.Adam()
     
@@ -70,5 +75,3 @@ if __name__ == "__main__":
 
                 grads = tape.gradient(loss, tac.trainable_weights)
                 optimizer.apply_gradients(zip(grads, tac.trainable_weights))
-            if i == 10:
-                break

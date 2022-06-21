@@ -3,12 +3,10 @@ from tensorflow.python.ops.gen_array_ops import concat
 from tensorflow.python.ops.math_ops import reduce_mean
 
 from config.config import Tacotron2Config
-from model.tokenizer import Tokenizer
 from model.layers.Encoder import EncConvLayer
 from model.layers.Decoder import LSAttention, Prenet, Postnet
 from model.layers.MelSpec import MelSpec
 
-from preprocess.gruut_phonem import gruutPhonem
 from datasets.ljspeech import generate_map_func
 
 import numpy as np
@@ -146,7 +144,6 @@ class Tacotron2(tf.keras.Model):
 
         self.tokenizer = tf.keras.layers.TextVectorization(split=self.tv_func)
 
-        self.phonem = gruutPhonem()
         self.config = config
 
         self.encoder = Encoder(self.config["encoder"])
