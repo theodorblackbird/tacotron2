@@ -54,7 +54,8 @@ if __name__ == "__main__":
 
                 true_mels, true_gate = y
 
-                crop = true_mels.shape[1] - true_mels.shape[1]%conf["n_frames_per_step"]#max_len must be a multiple of n_frames_per_step
+                crop = tf.shape(true_mels)[1] - tf.shape(true_mels)[1]%conf["n_frames_per_step"]#max_len must be a multiple of n_frames_per_step
+
                 true_mels = true_mels[:,:crop,:]
                 
                 true_gate = true_gate[:,1:crop,:]
