@@ -30,7 +30,7 @@ class Encoder(tf.keras.layers.Layer):
                 )
         self.config = config
 
-    def __call__(self, x):
+    def call(self, x):
 
         mask = x._keras_mask 
         y = self.encoder_conv(x)

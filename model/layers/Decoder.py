@@ -14,7 +14,7 @@ class Prenet(Layer):
             self.layers.add(Dense(units, activation='relu'))
             self.layers.add(Dropout(dropout_rate))
 
-    def __call__(self, x):
+    def call(self, x):
         return self.layers(x)
 
 class LSAttention(Layer):
