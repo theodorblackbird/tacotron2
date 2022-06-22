@@ -175,14 +175,6 @@ class Tacotron2(tf.keras.Model):
         self.decoder = Decoder(self.config)
 
         melconf = config["mel_spec"]
-        self.melspec = MelSpec(
-                melconf["frame_length"],
-                melconf["frame_step"],
-                melconf["fft_length"],
-                melconf["sampling_rate"],
-                melconf["n_mel_channels"],
-                melconf["freq_min"],
-                melconf["freq_max"])
     def set_vocabulary(self, dataset, n_batch=64):
         self.tokenizer.adapt(dataset.batch(n_batch))
         self.char_embedding = tf.keras.layers.Embedding(self.tokenizer.vocabulary_size(), 

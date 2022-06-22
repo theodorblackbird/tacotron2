@@ -1,7 +1,7 @@
 import time
 import tensorflow as tf
 from config.config import Tacotron2Config
-from datasets.ljspeech import generate_map_func
+from datasets.ljspeech import ljspeechDataset
 from model.Tacotron2 import Tacotron2
 from tqdm import tqdm
 
@@ -22,8 +22,8 @@ if __name__ == "__main__":
     batch_size = train_conf["batch_size"]
     ljspeech_text = tf.data.TextLineDataset(conf["train_data"]["transcript_path"])
     tac.set_vocabulary(ljspeech_text.map(lambda x : tf.strings.split(x, sep='|')[1])) #initialize tokenizer and char. embedding
-    map_F = generate_map_func(conf)
-    ljspeech = ljspeech_text.map(map_F)
+    dataset_mapper = ljspeechDataset(conf)
+    ljspeech = ljspeech_text.map(dataset_mapper)
     
     """
     padding values :
