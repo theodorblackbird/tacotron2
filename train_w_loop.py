@@ -4,6 +4,13 @@ from config.config import Tacotron2Config
 from datasets.ljspeech import ljspeechDataset
 from model.Tacotron2 import Tacotron2
 from tqdm import tqdm
+import os
+
+
+# silence verbose TF feedback
+if 'TF_CPP_MIN_LOG_LEVEL' not in os.environ:
+        os.environ['TF_CPP_MIN_LOG_LEVEL'] = "2"
+
 
 
 if __name__ == "__main__":
@@ -11,7 +18,7 @@ if __name__ == "__main__":
     initialize model
     """
 
-    conf = Tacotron2Config("config/configs/tacotron2_laptop.yaml")
+    conf = Tacotron2Config("config/configs/tacotron2.yaml")
     tac = Tacotron2(conf)
     train_conf = conf["train"]
     
@@ -42,6 +49,9 @@ if __name__ == "__main__":
     mse_loss = tf.keras.losses.MeanSquaredError(reduction=tf.keras.losses.Reduction.NONE)
     mse_loss = tf.keras.losses.MeanSquaredError()
     bce_logits = tf.keras.losses.BinaryCrossentropy(from_logits=True)
+
+    checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=tac)
+    manager = tf.train.CheckpointManager(checkpoint, directory="/tmp/test", max_to_keep=2)
 
     for epoch in range(epochs):
         print(f"Epoch : {epoch}/{epochs}")
@@ -80,6 +90,7 @@ if __name__ == "__main__":
 
                 grads = tape.gradient(loss, tac.trainable_weights)
                 optimizer.apply_gradients(zip(grads, tac.trainable_weights))
+
             if i > 10 : 
                 break
-        tac.save("test")
+        manager.save()

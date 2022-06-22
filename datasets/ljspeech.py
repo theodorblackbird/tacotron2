@@ -21,18 +21,18 @@ class ljspeechDataset(object):
                 msc["freq_min"],
                 msc["freq_max"])
 
-        def __call__(self, x):
-            
-            split = tf.strings.split(x, sep='|')
-            name = split[0]
-            phon = split[1]
-            path = self.conf["train_data"]["audio_dir"] + "/"+ name + ".wav"
-            raw_audio = tf.io.read_file(path)
-            audio, sr = tf.audio.decode_wav(raw_audio)
-            mel_spec = self.mel_spec_gen(audio)
-            gate = tf.zeros_like(mel_spec)
-            mel_len = len(mel_spec)
-            return (phon, mel_spec, mel_len), (mel_spec, gate)
+    def __call__(self, x):
+        
+        split = tf.strings.split(x, sep='|')
+        name = split[0]
+        phon = split[1]
+        path = self.conf["train_data"]["audio_dir"] + "/"+ name + ".wav"
+        raw_audio = tf.io.read_file(path)
+        audio, sr = tf.audio.decode_wav(raw_audio)
+        mel_spec = self.mel_spec_gen(audio)
+        gate = tf.zeros_like(mel_spec)
+        mel_len = len(mel_spec)
+        return (phon, mel_spec, mel_len), (mel_spec, gate)
 
 """
 F = generate_map_func(tac_conf)

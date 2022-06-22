@@ -7,7 +7,6 @@ from model.layers.Encoder import EncConvLayer
 from model.layers.Decoder import LSAttention, Prenet, Postnet
 from model.layers.MelSpec import MelSpec
 
-from datasets.ljspeech import generate_map_func
 
 import numpy as np
 
@@ -109,7 +108,7 @@ class Decoder(tf.keras.layers.Layer):
 
         return dec_output, gate_output
 
-    @tf.function
+    #@tf.function
     def call(self, enc_out, mel_gt, enc_out_mask):
 
         
@@ -189,6 +188,7 @@ class Tacotron2(tf.keras.Model):
         x = self.tokenizer(phon)
         x = self.char_embedding(x)
         y = self.encoder(x)
+        tf.print(tf.shape(y))
 
         crop = tf.shape(mels)[2] - tf.shape(mels)[2]%self.config["n_frames_per_step"]#max_len must be a multiple of n_frames_per_step
         mels_len = tf.clip_by_value(mels_len, 0, crop)

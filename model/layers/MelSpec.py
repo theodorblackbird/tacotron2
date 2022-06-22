@@ -36,7 +36,7 @@ class MelSpec(tf.keras.layers.Layer):
                 self.frame_length,
                 self.frame_step,
                 self.fft_length,
-                pad_end=True,                    )
+                pad_end=True)
 
         magnitude = tf.abs(stft)
 
