@@ -48,6 +48,7 @@ if __name__ == "__main__":
         start_time = time.time()
         for i, (x, y) in tqdm(enumerate(ljspeech), total=13100//batch_size):
             i += 1
+
             with tf.GradientTape() as tape:
                 mels, gate = tac(x)
                 mels, mels_post, mels_len = mels
@@ -76,5 +77,5 @@ if __name__ == "__main__":
 
                 grads = tape.gradient(loss, tac.trainable_weights)
                 optimizer.apply_gradients(zip(grads, tac.trainable_weights))
-
-                tac.save("test")
+                break
+        tac.save("test")

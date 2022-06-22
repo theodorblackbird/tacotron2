@@ -66,7 +66,15 @@ class Decoder(tf.keras.layers.Layer):
                 dc["postnet"]["kernel_size"],
                 dc["postnet"]["dropout_rate"],
                 config["n_frames_per_step"])
-
+        """
+        self.decode = tf.function(func=self.decode,
+            input_signature=[
+                tf.TensorSpec(shape=[None, self.config["decoder"]["prenet"]["units"]], dtype=tf.float32),
+                tf.TensorSpec(shape=[None, None, self.config["encoder"]["char_embedding_size"]], dtype=tf.float32),
+                tf.TensorSpec(shape=[None, None, self.config["decoder"]["lsattention"]["att_dim"]], dtype=tf.float32),
+            ],
+        )
+        """
 
     def prepare_decoder(self, enc_out):
         
@@ -80,18 +88,15 @@ class Decoder(tf.keras.layers.Layer):
         
         self.dec_hidden = tf.zeros([batch_size, dc["dec_rnn_units"]])
         self.dec_cell = self.dec_rnn.get_initial_state(None, batch_size, dtype=tf.float32)
-        
+    
         self.W_enc_out = self.lsattention_layer.process_memory(enc_out)
 
-
-    def decode(self, mel_in, enc_out, W_enc_out):
+    def decode(self, mel_in, enc_out, W_enc_out, enc_out_mask):
         att_rnn_in = tf.concat([mel_in, self.lsattention_layer.att_context], -1)
-        print(att_rnn_in.shape)
-        print(self.att_cell)
         self.att_hidden, self.att_cell = self.att_rnn(att_rnn_in, self.att_cell)
 
         self.att_context = self.lsattention_layer(
-                self.att_hidden, enc_out, W_enc_out)
+                self.att_hidden, enc_out, W_enc_out, enc_out_mask)
 
         dec_input = tf.concat([self.att_hidden, self.att_context], -1)
 
@@ -100,14 +105,13 @@ class Decoder(tf.keras.layers.Layer):
         dec_hidden_att_context = tf.concat([self.dec_hidden, self.att_context], 1)
 
         dec_output = self.lin_proj_dense(dec_hidden_att_context)
-        dec_output = tf.reshape(dec_output, [-1, self.config["n_frames_per_step"], self.config["n_mel_channels"]])
         gate_output = self.gate_dense(dec_hidden_att_context)
 
         return dec_output, gate_output
 
+    @tf.function
+    def call(self, enc_out, mel_gt, enc_out_mask):
 
-
-    def __call__(self, enc_out, mel_gt):
         
         #first mel frame input
         first_mel_frame = tf.zeros([1, tf.shape(enc_out)[0], self.config["n_mel_channels"] * self.config["n_frames_per_step"]])
@@ -118,25 +122,44 @@ class Decoder(tf.keras.layers.Layer):
         mel_gt = tf.reshape(mel_gt, [tf.shape(mel_gt)[0], tf.shape(mel_gt)[-1] // self.config["n_frames_per_step"], -1])
         mel_gt = tf.transpose(mel_gt, perm=[1,0,2])
         mel_gt = tf.concat([first_mel_frame, mel_gt], 0)
+        mel_gt = mel_gt[:-1]
 
 
 
         mel_gt = self.prenet(mel_gt)
 
-        mels_out, gates_out = [], []
+        mels_size = mel_gt.shape[0]
+        mels_out, gates_out = tf.TensorArray(tf.float32, size=mels_size), tf.TensorArray(tf.float32, size=mels_size)
+
         
         self.prepare_decoder(enc_out)
 
-        for i in range(len(mel_gt)-1):
+        for i in tf.range(mels_size):
 
             mel_in = mel_gt[i]
+            mel_out, gate_out = self.decode(mel_in, enc_out, self.W_enc_out, enc_out_mask)
+            mel_out = tf.reshape(mel_out, [-1, self.config["n_frames_per_step"], self.config["n_mel_channels"]])
+            mel_out = tf.reshape(mel_out, [-1, self.config["n_frames_per_step"], self.config["n_mel_channels"]])
+            mels_out = mels_out.write(i, mel_out)
+            gates_out = gates_out.write(i, gate_out)
 
-            mel_out, gate_out = self.decode(mel_in, enc_out, self.W_enc_out)
-        
+
+            """ 
             mels_out.append(mel_out)
             gates_out.append(gate_out)
+            """
 
-        return tf.concat(mels_out, 1), tf.concat(gates_out, 1)
+        #return tf.concat(mels_out, 1), tf.concat(gates_out, 1)
+        mels_out = mels_out.stack()
+        gates_out = gates_out.stack()
+
+        batch_size = tf.shape(mels_out)[1]
+        mels_out = tf.reshape(mels_out, [batch_size, -1, self.config["n_mel_channels"], 1])
+        gates_out = tf.reshape(gates_out, [batch_size, -1])
+
+
+
+        return mels_out, gates_out
 
 
 
@@ -160,14 +183,12 @@ class Tacotron2(tf.keras.Model):
                 melconf["n_mel_channels"],
                 melconf["freq_min"],
                 melconf["freq_max"])
-    
     def set_vocabulary(self, dataset, n_batch=64):
         self.tokenizer.adapt(dataset.batch(n_batch))
         self.char_embedding = tf.keras.layers.Embedding(self.tokenizer.vocabulary_size(), 
                 self.config["encoder"]["char_embedding_size"],
                 mask_zero=True)
-    
-    @tf.function
+
     def call(self, batch, training=False):
 
         phon, mels, mels_len = batch
@@ -177,10 +198,9 @@ class Tacotron2(tf.keras.Model):
         x = self.char_embedding(x)
         y = self.encoder(x)
 
-
         crop = tf.shape(mels)[2] - tf.shape(mels)[2]%self.config["n_frames_per_step"]#max_len must be a multiple of n_frames_per_step
         mels_len = tf.clip_by_value(mels_len, 0, crop)
-        mels, gates = self.decoder(y, mels[:,:,:crop])
+        mels, gates = self.decoder(y, mels[:,:,:crop], y._keras_mask)
 
         residual = self.decoder.postnet(mels)
         mels_post = mels + residual

@@ -12,7 +12,7 @@ def generate_map_func(conf):
         
         split = tf.strings.split(x, sep='|')
         name = split[0]
-        phon = split[1:2]
+        phon = split[1]
         path = conf["train_data"]["audio_dir"] + "/"+ name + ".wav"
         raw_audio = tf.io.read_file(path)
         audio, sr = tf.audio.decode_wav(raw_audio)

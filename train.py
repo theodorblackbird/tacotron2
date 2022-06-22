@@ -10,7 +10,7 @@ if __name__ == "__main__":
     """
     initialize model
     """
-    conf = Tacotron2Config("config/configs/tacotron2.yaml")
+    conf = Tacotron2Config("config/configs/tacotron2_laptop.yaml")
     tac = Tacotron2(conf)
     """
     initalize dataset
@@ -19,15 +19,15 @@ if __name__ == "__main__":
     ljspeech_text = tf.data.TextLineDataset(conf["train_data"]["transcript_path"])
     tac.set_vocabulary(ljspeech_text.map(lambda x : tf.strings.split(x, sep='|')[1])) #initialize tokenizer and char. embedding
     map_F = generate_map_func(conf)
-    ljspeech_text = ljspeech_text.map(map_F)
+    ljspeech = ljspeech_text.map(map_F)
     """
     padding values :
         input : (phonem, mel spec), output : (mel spec, gate)
     """
-    ljspeech_text = ljspeech_text.padded_batch(batch_size, 
-            padding_values=((None, None), (None, 1.)) )
+    ljspeech = ljspeech.padded_batch(batch_size, 
+            padding_values=((None, None, None), (None, 1.)),
+            drop_remainder=conf["train"]["drop_remainder"])
 
-    print(next(iter(ljspeech_text))[0][0])
     """
     train
     """
@@ -35,4 +35,4 @@ if __name__ == "__main__":
     epochs = conf["train"]["epochs"]
 
     tac.compile(optimizer=optimizer, loss=tac.criterion)
-    tac.fit(ljspeech_text, epochs=epochs)
+    tac.fit(ljspeech, epochs=epochs)

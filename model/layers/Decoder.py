@@ -43,7 +43,6 @@ class LSAttention(Layer):
                 use_bias=False)
 
 
-
     def prepare_attention(self, batch):
         batch_size = tf.shape(batch)[0]
         max_len = tf.shape(batch)[1]
@@ -61,19 +60,18 @@ class LSAttention(Layer):
         cat_att_weights = tf.concat([tf.expand_dims(self.att_weights, 1), tf.expand_dims(self.cum_att_weights, 1)],
                 1)
         cat_att_weights = tf.transpose(cat_att_weights, perm=[0,2,1])
-
         
         W_query = self.query_dense(tf.expand_dims(query, 1))
         W_att_weights = self.location_conv(cat_att_weights)
         W_att_weights = self.location_dense(W_att_weights)
         alignment = self.energy_dense(tf.math.tanh(W_query + W_att_weights + W_memory))
-        return tf.squeeze(alignment)
+        return tf.squeeze(alignment, axis=-1)
 
+    def __call__(self, att_hs, memory, W_memory, memory_mask):
 
-    def __call__(self, att_hs, memory, W_memory):
 
         alignment = self.alignment_score(att_hs, W_memory)
-        alignment = tf.where(memory._keras_mask, alignment, -float("inf"))
+        alignment = tf.where(memory_mask, alignment, -float("inf"))
         att_weights = tf.nn.softmax(alignment, axis=1)
         att_context = tf.matmul(tf.expand_dims(att_weights, 1), memory)
         att_context = tf.squeeze(att_context)
