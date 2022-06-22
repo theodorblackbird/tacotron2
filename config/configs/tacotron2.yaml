@@ -3,6 +3,7 @@ train:
         epochs: 100
         optimizer: 'adam'
         drop_remainder: True
+        len_dataset: 13100
 
 
 encoder:

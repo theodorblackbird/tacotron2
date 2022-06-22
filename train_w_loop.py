@@ -57,6 +57,9 @@ if __name__ == "__main__":
 
                 crop = tf.shape(true_mels)[1] - tf.shape(true_mels)[1]%conf["n_frames_per_step"]#max_len must be a multiple of n_frames_per_step
 
+                """
+                compute loss
+                """
                 true_mels = true_mels[:,:crop,:]
                 
                 true_gate = true_gate[:,1:crop,:]
@@ -77,5 +80,6 @@ if __name__ == "__main__":
 
                 grads = tape.gradient(loss, tac.trainable_weights)
                 optimizer.apply_gradients(zip(grads, tac.trainable_weights))
+            if i > 10 : 
                 break
         tac.save("test")

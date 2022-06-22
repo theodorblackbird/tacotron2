@@ -67,7 +67,7 @@ class LSAttention(Layer):
         alignment = self.energy_dense(tf.math.tanh(W_query + W_att_weights + W_memory))
         return tf.squeeze(alignment, axis=-1)
 
-    def __call__(self, att_hs, memory, W_memory, memory_mask):
+    def call(self, att_hs, memory, W_memory, memory_mask):
 
 
         alignment = self.alignment_score(att_hs, W_memory)
@@ -115,7 +115,7 @@ class Postnet(Layer):
             self.layers.add(DecConvLayer(filters, kernel_size, dropout_rate))
         self.layers.add(Dense(n_mel_channels))
     
-    def __call__(self, x):
+    def call(self, x):
         return self.layers(x)
 
 
