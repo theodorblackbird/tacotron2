@@ -1,9 +1,12 @@
-import time
 import tensorflow as tf
+
 from config.config import Tacotron2Config
 from datasets.ljspeech import ljspeechDataset
 from model.Tacotron2 import Tacotron2
+
 from tqdm import tqdm
+import time
+from datetime import datetime
 import os
 
 
@@ -18,7 +21,12 @@ if __name__ == "__main__":
     initialize model
     """
 
-    conf = Tacotron2Config("config/configs/tacotron2.yaml")
+    logdir = "logs/" + datetime.now().strftime("%Y%m%d-%H%M%S")
+    
+    file_writer = tf.summary.create_file_writer(logdir + "/metrics")
+    file_writer.set_as_default()
+
+    conf = Tacotron2Config("config/configs/tacotron2_laptop.yaml")
     tac = Tacotron2(conf)
     train_conf = conf["train"]
     
@@ -46,8 +54,7 @@ if __name__ == "__main__":
 
     optimizer = tf.keras.optimizers.Adam()
     
-    mse_loss = tf.keras.losses.MeanSquaredError(reduction=tf.keras.losses.Reduction.NONE)
-    mse_loss = tf.keras.losses.MeanSquaredError()
+    mse_loss = tf.keras.losses.MeanSquaredError(reduction=tf.keras.losses.Reduction.SUM_OVER_BATCH_SIZE)
     bce_logits = tf.keras.losses.BinaryCrossentropy(from_logits=True)
 
     checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=tac)
@@ -70,19 +77,18 @@ if __name__ == "__main__":
                 """
                 compute loss
                 """
-                true_mels = true_mels[:,:crop,:]
-                
-                true_gate = true_gate[:,1:crop,:]
-                true_gate = tf.reduce_mean(true_gate, axis = 2)
-                one_slice = tf.expand_dims(tf.ones(tf.shape(true_gate)[0]), 1)
-                true_gate = tf.concat([true_gate, one_slice], 1)
-                true_gate = true_gate[:,::conf["n_frames_per_step"]]
 
+                true_mels = true_mels[:,:crop,:] 
                 true_mels = tf.expand_dims(true_mels, -1)
-                mels = tf.expand_dims(mels, -1)
-                mels_post = tf.expand_dims(mels_post, -1)
                 
                 mels_mask = tf.sequence_mask(mels_len)
+                mels_mask = tf.expand_dims(mels_mask, -1)
+                mels_mask = tf.expand_dims(mels_mask, -1)
+
+                mels = tf.where(mels_mask, mels, [0.])
+                
+                tf.summary.image("true",tf.transpose(true_mels/88., perm=[0,2,1,3]), step=i)
+                tf.summary.image("pred", tf.transpose(mels, perm=[0,2,1,3]), step=i)
 
                 loss = mse_loss(mels, true_mels) + \
                         mse_loss(mels_post, true_mels) + \
@@ -91,6 +97,7 @@ if __name__ == "__main__":
                 grads = tape.gradient(loss, tac.trainable_weights)
                 optimizer.apply_gradients(zip(grads, tac.trainable_weights))
 
-            if i > 10 : 
+            if i > 10: 
                 break
+        break
         manager.save()

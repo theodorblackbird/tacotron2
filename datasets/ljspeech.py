@@ -5,7 +5,7 @@ from model.layers.MelSpec import MelSpec
 from os.path import join
 
 
-tac_conf = Tacotron2Config("config/configs/tacotron2.yaml")
+tac_conf = Tacotron2Config("config/configs/tacotron2_laptop.yaml")
 
 class ljspeechDataset(object):
     def __init__(self, conf) -> None:
@@ -30,8 +30,15 @@ class ljspeechDataset(object):
         raw_audio = tf.io.read_file(path)
         audio, sr = tf.audio.decode_wav(raw_audio)
         mel_spec = self.mel_spec_gen(audio)
+        crop = tf.shape(mel_spec)[0] - tf.shape(mel_spec)[0]%self.conf["n_frames_per_step"]#max_len must be a multiple of n_frames_per_step
         gate = tf.zeros_like(mel_spec)
         mel_len = len(mel_spec)
+        gate = gate[1:crop,:]
+        gate = tf.reduce_mean(gate, axis = 1)
+        gate = tf.concat([gate, [1.]], 0)
+        gate = gate[::self.conf["n_frames_per_step"]]
+
+
         return (phon, mel_spec, mel_len), (mel_spec, gate)
 
 """

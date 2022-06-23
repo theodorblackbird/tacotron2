@@ -83,10 +83,10 @@ class Decoder(tf.keras.layers.Layer):
         batch_size = tf.shape(enc_out)[0]
 
         self.att_hidden = tf.zeros([batch_size, dc["lsattention"]["rnn_dim"]])
-        self.att_cell = self.att_rnn.get_initial_state(None, batch_size, dtype=tf.float32)
+        self.att_cell = self.att_rnn.get_initial_state(batch_size=batch_size, dtype=tf.float32)
         
         self.dec_hidden = tf.zeros([batch_size, dc["dec_rnn_units"]])
-        self.dec_cell = self.dec_rnn.get_initial_state(None, batch_size, dtype=tf.float32)
+        self.dec_cell = self.dec_rnn.get_initial_state(batch_size=batch_size, dtype=tf.float32)
     
         self.W_enc_out = self.lsattention_layer.process_memory(enc_out)
 
@@ -108,22 +108,19 @@ class Decoder(tf.keras.layers.Layer):
 
         return dec_output, gate_output
 
-    #@tf.function
     def call(self, enc_out, mel_gt, enc_out_mask):
-
         
+        batch_size = tf.shape(mel_gt)[0]
+
         #first mel frame input
         first_mel_frame = tf.zeros([1, tf.shape(enc_out)[0], self.config["n_mel_channels"] * self.config["n_frames_per_step"]])
 
         #reshape mel_gt in order to group frames by reduction factor
         #it implies that given mel spec length is a multiple of n_frames_per_step
-        #(batch_size x n_mel_channels x L) -> (batch_size x n_mel_channels * n_frames_per_step x L // n_frames_per_step ) 
-        mel_gt = tf.reshape(mel_gt, [tf.shape(mel_gt)[0], tf.shape(mel_gt)[-1] // self.config["n_frames_per_step"], -1])
+        #(batch_size x n_mel_channels x L) -> (batch_size x n_mel_channels * n_frames_per_step x L // n_frames_per_step)
+        mel_gt = tf.reshape(mel_gt, [batch_size, tf.shape(mel_gt)[-1] // self.config["n_frames_per_step"], -1])
         mel_gt = tf.transpose(mel_gt, perm=[1,0,2])
-        mel_gt = tf.concat([first_mel_frame, mel_gt], 0)
-        mel_gt = mel_gt[:-1]
-
-
+        mel_gt = tf.concat([first_mel_frame, mel_gt[:-1] ], 0)
 
         mel_gt = self.prenet(mel_gt)
 
@@ -137,22 +134,17 @@ class Decoder(tf.keras.layers.Layer):
 
             mel_in = mel_gt[i]
             mel_out, gate_out = self.decode(mel_in, enc_out, self.W_enc_out, enc_out_mask)
-            mel_out = tf.reshape(mel_out, [-1, self.config["n_frames_per_step"], self.config["n_mel_channels"]])
-            mel_out = tf.reshape(mel_out, [-1, self.config["n_frames_per_step"], self.config["n_mel_channels"]])
+            
             mels_out = mels_out.write(i, mel_out)
             gates_out = gates_out.write(i, gate_out)
 
-
-            """ 
-            mels_out.append(mel_out)
-            gates_out.append(gate_out)
-            """
-
-        #return tf.concat(mels_out, 1), tf.concat(gates_out, 1)
         mels_out = mels_out.stack()
         gates_out = gates_out.stack()
+        
+        print(tf.shape(mels_out))
 
-        batch_size = tf.shape(mels_out)[1]
+        mels_out = tf.transpose(mels_out, perm=[1,0,2])
+
         mels_out = tf.reshape(mels_out, [batch_size, -1, self.config["n_mel_channels"], 1])
         gates_out = tf.reshape(gates_out, [batch_size, -1])
 
@@ -188,7 +180,6 @@ class Tacotron2(tf.keras.Model):
         x = self.tokenizer(phon)
         x = self.char_embedding(x)
         y = self.encoder(x)
-        tf.print(tf.shape(y))
 
         crop = tf.shape(mels)[2] - tf.shape(mels)[2]%self.config["n_frames_per_step"]#max_len must be a multiple of n_frames_per_step
         mels_len = tf.clip_by_value(mels_len, 0, crop)
