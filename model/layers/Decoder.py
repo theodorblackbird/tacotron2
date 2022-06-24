@@ -93,7 +93,7 @@ class DecConvLayer(Layer):
         self.dropout = Dropout(
                 rate=dropout_rate)
         self.support_masking = True
-    def call(self, x, training=False):
+    def call(self, x, training=True):
         y = self.conv(x)
         y = self.bn(y, training=training)
         y = tf.nn.relu(y)

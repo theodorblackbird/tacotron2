@@ -1,3 +1,4 @@
+from numpy.core.numeric import count_nonzero
 import tensorflow as tf
 
 from config.config import Tacotron2Config
@@ -9,14 +10,19 @@ import time
 from datetime import datetime
 import os
 
+import manage_gpus as gpl
 
-# silence verbose TF feedback
-if 'TF_CPP_MIN_LOG_LEVEL' not in os.environ:
-        os.environ['TF_CPP_MIN_LOG_LEVEL'] = "2"
 
 
 
 if __name__ == "__main__":
+
+    # silence verbose TF feedback
+    if 'TF_CPP_MIN_LOG_LEVEL' not in os.environ:
+            os.environ['TF_CPP_MIN_LOG_LEVEL'] = "2"
+
+    gpl.get_gpu_lock(gpu_device_id=2, soft=False)
+
     """
     initialize model
     """
@@ -26,7 +32,7 @@ if __name__ == "__main__":
     file_writer = tf.summary.create_file_writer(logdir + "/metrics")
     file_writer.set_as_default()
 
-    conf = Tacotron2Config("config/configs/tacotron2_laptop.yaml")
+    conf = Tacotron2Config("config/configs/tacotron2.yaml")
     tac = Tacotron2(conf)
     train_conf = conf["train"]
     
@@ -59,13 +65,13 @@ if __name__ == "__main__":
 
     checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=tac)
     manager = tf.train.CheckpointManager(checkpoint, directory="/tmp/test", max_to_keep=2)
+    n_step_per_epoch = 13100//batch_size
 
     for epoch in range(epochs):
         print(f"Epoch : {epoch}/{epochs}")
         start_time = time.time()
-        for i, (x, y) in tqdm(enumerate(ljspeech), total=13100//batch_size):
-            i += 1
-
+        
+        for i, (x, y) in tqdm(enumerate(ljspeech), total=n_step_per_epoch):
             with tf.GradientTape() as tape:
                 mels, gate = tac(x)
                 mels, mels_post, mels_len = mels
@@ -86,18 +92,21 @@ if __name__ == "__main__":
                 mels_mask = tf.expand_dims(mels_mask, -1)
 
                 mels = tf.where(mels_mask, mels, [0.])
-                
-                tf.summary.image("true",tf.transpose(true_mels/88., perm=[0,2,1,3]), step=i)
-                tf.summary.image("pred", tf.transpose(mels, perm=[0,2,1,3]), step=i)
+                mels_post = tf.where(mels_mask, mels_post, [0.])
 
-                loss = mse_loss(mels, true_mels) + \
-                        mse_loss(mels_post, true_mels) + \
-                        bce_logits(true_gate, gate) 
+                if i%100==0 :
+                    tf.summary.image("true",tf.transpose(true_mels, perm=[0,2,1,3]), step=i + epoch*n_step_per_epoch)
+                    tf.summary.image("pred", tf.transpose(mels, perm=[0,2,1,3]), step=i + epoch*n_step_per_epoch)
+
+                mels_mask = tf.broadcast_to(mels_mask, tf.shape(mels))
+                mels_fac = tf.math.count_nonzero(mels_mask, dtype=tf.float32)
+
+
+                loss = (mse_loss(mels, true_mels) + mse_loss(mels_post, true_mels)) / mels_fac + bce_logits(true_gate, gate) 
+
+                tf.summary.scalar('loss', loss, step=i)
 
                 grads = tape.gradient(loss, tac.trainable_weights)
                 optimizer.apply_gradients(zip(grads, tac.trainable_weights))
 
-            if i > 10: 
-                break
-        break
         manager.save()

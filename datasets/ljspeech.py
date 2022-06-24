@@ -1,11 +1,11 @@
 from tensorflow.data import Dataset
 import tensorflow as tf
+import numpy as np
 from config.config import Tacotron2Config
 from model.layers.MelSpec import MelSpec
 from os.path import join
 
 
-tac_conf = Tacotron2Config("config/configs/tacotron2_laptop.yaml")
 
 class ljspeechDataset(object):
     def __init__(self, conf) -> None:
@@ -20,7 +20,11 @@ class ljspeechDataset(object):
                 msc["n_mel_channels"],
                 msc["freq_min"],
                 msc["freq_max"])
+        stats = np.loadtxt(conf["train_data"]["statistics"])
+        self.mean = tf.constant(stats[0:msc["n_mel_channels"]], dtype=tf.float32)
+        self.std = tf.math.sqrt(tf.constant(stats[msc["n_mel_channels"]:], dtype=tf.float32))
 
+        
     def __call__(self, x):
         
         split = tf.strings.split(x, sep='|')
@@ -30,22 +34,11 @@ class ljspeechDataset(object):
         raw_audio = tf.io.read_file(path)
         audio, sr = tf.audio.decode_wav(raw_audio)
         mel_spec = self.mel_spec_gen(audio)
+        mel_spec = (mel_spec - self.mean)/self.std
         crop = tf.shape(mel_spec)[0] - tf.shape(mel_spec)[0]%self.conf["n_frames_per_step"]#max_len must be a multiple of n_frames_per_step
-        gate = tf.zeros_like(mel_spec)
         mel_len = len(mel_spec)
-        gate = gate[1:crop,:]
-        gate = tf.reduce_mean(gate, axis = 1)
-        gate = tf.concat([gate, [1.]], 0)
-        gate = gate[::self.conf["n_frames_per_step"]]
-
+        gate = tf.zeros(mel_len-1)
+        gate = tf.concat( (gate, [1.]), axis=0)
 
         return (phon, mel_spec, mel_len), (mel_spec, gate)
 
-"""
-F = generate_map_func(tac_conf)
-ljspeech_text = tf.data.TextLineDataset(tac_conf["train_data"]["transcript_path"])
-ljspeech_text = ljspeech_text.map(F)
-x, y = next(iter(ljspeech_text))
-
-print(x, y.shape)
-"""

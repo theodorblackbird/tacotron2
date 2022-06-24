@@ -14,7 +14,7 @@ import numpy as np
 class Encoder(tf.keras.layers.Layer):
     def __init__(self, config): 
         super().__init__()
-    
+
         self.encoder_conv = tf.keras.Sequential([EncConvLayer(
             config["conv_layer"]["filter"],
             config["conv_layer"]["kernel_size"], 
@@ -52,7 +52,7 @@ class Decoder(tf.keras.layers.Layer):
                 dc["lsattention"]["att_dim"],
                 dc["lsattention"]["att_n_filters"],
                 dc["lsattention"]["att_ker_size"])
-        
+
         self.att_rnn = tf.keras.layers.LSTMCell(dc["lsattention"]["att_dim"])
         self.dec_rnn = tf.keras.layers.LSTMCell(dc["dec_rnn_units"])
 
@@ -65,18 +65,9 @@ class Decoder(tf.keras.layers.Layer):
                 dc["postnet"]["kernel_size"],
                 dc["postnet"]["dropout_rate"],
                 config["n_frames_per_step"])
-        """
-        self.decode = tf.function(func=self.decode,
-            input_signature=[
-                tf.TensorSpec(shape=[None, self.config["decoder"]["prenet"]["units"]], dtype=tf.float32),
-                tf.TensorSpec(shape=[None, None, self.config["encoder"]["char_embedding_size"]], dtype=tf.float32),
-                tf.TensorSpec(shape=[None, None, self.config["decoder"]["lsattention"]["att_dim"]], dtype=tf.float32),
-            ],
-        )
-        """
 
     def prepare_decoder(self, enc_out):
-        
+
         self.lsattention_layer.prepare_attention(enc_out)
 
         dc = self.config["decoder"]
@@ -84,10 +75,10 @@ class Decoder(tf.keras.layers.Layer):
 
         self.att_hidden = tf.zeros([batch_size, dc["lsattention"]["rnn_dim"]])
         self.att_cell = self.att_rnn.get_initial_state(batch_size=batch_size, dtype=tf.float32)
-        
+
         self.dec_hidden = tf.zeros([batch_size, dc["dec_rnn_units"]])
         self.dec_cell = self.dec_rnn.get_initial_state(batch_size=batch_size, dtype=tf.float32)
-    
+
         self.W_enc_out = self.lsattention_layer.process_memory(enc_out)
 
     def decode(self, mel_in, enc_out, W_enc_out, enc_out_mask):
@@ -109,7 +100,7 @@ class Decoder(tf.keras.layers.Layer):
         return dec_output, gate_output
 
     def call(self, enc_out, mel_gt, enc_out_mask):
-        
+
         batch_size = tf.shape(mel_gt)[0]
 
         #first mel frame input
@@ -124,33 +115,48 @@ class Decoder(tf.keras.layers.Layer):
 
         mel_gt = self.prenet(mel_gt)
 
-        mels_size = mel_gt.shape[0]
+        mels_size = tf.shape(mel_gt)[0]
         mels_out, gates_out = tf.TensorArray(tf.float32, size=mels_size), tf.TensorArray(tf.float32, size=mels_size)
 
-        
+
         self.prepare_decoder(enc_out)
 
         for i in tf.range(mels_size):
 
             mel_in = mel_gt[i]
             mel_out, gate_out = self.decode(mel_in, enc_out, self.W_enc_out, enc_out_mask)
-            
+
             mels_out = mels_out.write(i, mel_out)
             gates_out = gates_out.write(i, gate_out)
 
         mels_out = mels_out.stack()
         gates_out = gates_out.stack()
-        
-        print(tf.shape(mels_out))
 
         mels_out = tf.transpose(mels_out, perm=[1,0,2])
-
         mels_out = tf.reshape(mels_out, [batch_size, -1, self.config["n_mel_channels"], 1])
         gates_out = tf.reshape(gates_out, [batch_size, -1])
 
 
 
         return mels_out, gates_out
+
+class Tacotron2Loss(tf.keras.losses.Loss):
+    def __init__(self) -> None:
+        super().__init__()
+        self.mse_loss = tf.keras.losses.MeanSquaredError(reduction=tf.keras.losses.Reduction.SUM_OVER_BATCH_SIZE)
+        self.bce_logits = tf.keras.losses.BinaryCrossentropy(from_logits=True)
+
+    def call(self, y_true, y_pred):
+        print(tf.unstack(y_true))
+        true_mels, true_gate, mels_fac = tf.unstack(y_true)
+        mels, gate = tf.unstack(y_pred)
+        mels, mels_post = tf.unstack(mels)
+
+        loss = (self.mse_loss(mels, true_mels) + \
+                self.mse_loss(mels_post, true_mels)) / mels_fac + \
+                self.bce_logits(true_gate, gate) 
+        return loss
+
 
 
 
@@ -165,7 +171,9 @@ class Tacotron2(tf.keras.Model):
         self.encoder = Encoder(self.config["encoder"])
         self.decoder = Decoder(self.config)
 
-        melconf = config["mel_spec"]
+        self.mse_loss = tf.keras.losses.MeanSquaredError(reduction=tf.keras.losses.Reduction.SUM_OVER_BATCH_SIZE)
+        self.bce_logits = tf.keras.losses.BinaryCrossentropy(from_logits=True)
+
     def set_vocabulary(self, dataset, n_batch=64):
         self.tokenizer.adapt(dataset.batch(n_batch))
         self.char_embedding = tf.keras.layers.Embedding(self.tokenizer.vocabulary_size(), 
@@ -187,7 +195,7 @@ class Tacotron2(tf.keras.Model):
 
         residual = self.decoder.postnet(mels)
         mels_post = mels + residual
-        
+
         return (mels, mels_post, mels_len), gates
 
     @staticmethod
@@ -195,32 +203,37 @@ class Tacotron2(tf.keras.Model):
         x = tf.strings.unicode_split(x, 'UTF-8')
         return x
 
-    @staticmethod
-    def criterion(y_pred, y_true):
-        mels, gates = y_pred
-        mels_pre, mels_post = mels
-        mels_true, gates_true = y_true
-        gates_true = tf.reduce_mean(gates_true, axis=1)
+    def train_step(self, data):
+        x, y = data
+        with tf.GradientTape() as tape:
+            mels, gate = self(x, training=True)
+            mels, mels_post, mels_len = mels
 
-        loss = tf.reduce_mean(tf.square(mels_pre - mels_true)) + \
-                tf.reduce_mean(tf.square(mels_post - mels_true)) + \
-                tf.nn.sigmoid_cross_entropy_with_logits(gates_true, gates)
-        return loss
+            true_mels, true_gate = y
 
-    @staticmethod
-    def ljspeech_map_func(x):
-        x = tf.strings.split(x, sep='|')[1]
-        return x
+            crop = tf.shape(true_mels)[1] - tf.shape(true_mels)[1]%self.config["n_frames_per_step"]#max_len must be a multiple of n_frames_per_step
 
-if __name__ == "__main__":
-    tac_conf = Tacotron2Config("config/configs/tacotron2.yaml")
-    tac = Tacotron2(tac_conf)
+            """
+            compute loss
+            """
 
-    ljspeech_text = tf.data.TextLineDataset(tac_conf["train_data"]["transcript_path"])
-    tac.set_vocabulary(ljspeech_text.map(lambda x : tf.strings.split(x, sep='|')[0]))
-    map_F = generate_map_func(tac_conf)
-    ljspeech_text = ljspeech_text.map(map_F)
+            true_mels = true_mels[:,:crop,:] 
+            true_mels = tf.expand_dims(true_mels, -1)
 
-    x, y = next(iter(ljspeech_text.padded_batch(16, padding_values=((None, None), (None, 1.)) )))
-    mels, gates = tac(x)
-    
+            mels_mask = tf.sequence_mask(mels_len)
+            mels_mask = tf.expand_dims(mels_mask, -1)
+            mels_mask = tf.expand_dims(mels_mask, -1)
+
+            mels = tf.where(mels_mask, mels, [0.])
+            mels_post = tf.where(mels_mask, mels_post, [0.])
+
+            mels_mask = tf.broadcast_to(mels_mask, tf.shape(mels))
+            
+            pre_loss =  self.mse_loss(mels, true_mels) 
+            post_loss = self.mse_loss(mels_post, true_mels)
+            gate_loss = self.bce_logits(true_gate, gate)
+            loss = pre_loss + post_loss + gate_loss
+
+        grads = tape.gradient(loss, self.trainable_weights)
+        self.optimizer.apply_gradients(zip(grads, self.trainable_weights))
+        return {'loss': loss, 'pre_loss' : pre_loss, 'post_loss' : post_loss, 'gate_loss' : gate_loss}
