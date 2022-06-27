@@ -193,9 +193,8 @@ class Tacotron2(tf.keras.Model):
         mels_len = tf.clip_by_value(mels_len, 0, crop)
         mels, gates = self.decoder(y, mels[:,:,:crop], mask)
 
-        residual = self.decoder.postnet(mels)
-        mels_post = mels + residual
-
+        residual = self.decoder.postnet(tf.squeeze(mels, -1))
+        mels_post = mels + tf.expand_dims(residual, -1)
         return (mels, mels_post, mels_len), gates
 
     @staticmethod
