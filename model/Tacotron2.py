@@ -29,9 +29,8 @@ class Encoder(tf.keras.layers.Layer):
                 )
         self.config = config
 
-    def call(self, x):
+    def call(self, x, mask):
 
-        mask = x._keras_mask 
         y = self.encoder_conv(x)
         y = self.bidir_lstm(y, mask=mask)  #propagates mask
 
@@ -186,12 +185,13 @@ class Tacotron2(tf.keras.Model):
         mels = tf.transpose(mels, perm=[0,2,1])
 
         x = self.tokenizer(phon)
-        x = self.char_embedding(x)
-        y = self.encoder(x)
+        y = self.char_embedding(x)
+        mask = self.char_embedding.compute_mask(x)
+        y = self.encoder(y)
 
         crop = tf.shape(mels)[2] - tf.shape(mels)[2]%self.config["n_frames_per_step"]#max_len must be a multiple of n_frames_per_step
         mels_len = tf.clip_by_value(mels_len, 0, crop)
-        mels, gates = self.decoder(y, mels[:,:,:crop], y._keras_mask)
+        mels, gates = self.decoder(y, mels[:,:,:crop], mask)
 
         residual = self.decoder.postnet(mels)
         mels_post = mels + residual
