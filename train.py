@@ -9,6 +9,11 @@ import manage_gpus as gpl
 from datetime import datetime
 
 
+class ImageCallback(tf.keras.callbacks.Callback):
+    def on_batch_end(self, batch, logs=None):
+        if batch%100 == 0:
+            tf.summary.image("mels", self.model.mels)
+            tf.summary.image("alignments", self.model.alignments)
 
 
 if __name__ == "__main__":
@@ -68,5 +73,6 @@ if __name__ == "__main__":
             batch_size=batch_size,
             epochs=epochs,
             callbacks=[tensorboard_callback,
-                cp_callback])
+                cp_callback,
+                ImageCallback()])
 

@@ -138,6 +138,7 @@ class Decoder(tf.keras.layers.Layer):
         tf.print(tf.shape(alignments))
 
         mels_out = tf.transpose(mels_out, perm=[1,0,2])
+        alignments = tf.transpose(alignments, perm=[1,0,2])
         mels_out = tf.reshape(mels_out, [batch_size, -1, self.config["n_mel_channels"], 1])
         gates_out = tf.reshape(gates_out, [batch_size, -1])
 
@@ -199,7 +200,7 @@ class Tacotron2(tf.keras.Model):
         residual = self.decoder.postnet(tf.squeeze(mels,-1))
         mels_post = mels + tf.expand_dims(residual, -1)
 
-        return (mels, mels_post, mels_len), gates
+        return (mels, mels_post, mels_len), gates, alignments
 
     @staticmethod
     def tv_func(x):
@@ -209,7 +210,7 @@ class Tacotron2(tf.keras.Model):
     def train_step(self, data):
         x, y = data
         with tf.GradientTape() as tape:
-            mels, gate = self(x, training=True)
+            mels, gate, alignments = self(x, training=True)
             mels, mels_post, mels_len = mels
 
             true_mels, true_gate = y
@@ -236,6 +237,9 @@ class Tacotron2(tf.keras.Model):
             post_loss = self.mse_loss(mels_post, true_mels)
             gate_loss = self.bce_logits(true_gate, gate)
             loss = pre_loss + post_loss + gate_loss
+            self.mels = mels
+            self.gate = gate
+            self.alignments = alignments
 
         grads = tape.gradient(loss, self.trainable_weights)
         self.optimizer.apply_gradients(zip(grads, self.trainable_weights))
