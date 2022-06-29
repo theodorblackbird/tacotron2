@@ -199,6 +199,8 @@ class Tacotron2(tf.keras.Model):
         mels, gates = self.decoder(y, mels[:,:,:crop], y._keras_mask)
 
         residual = self.decoder.postnet(mels)
+        print(tf.shape(residual))
+        print(tf.shape(mel))
         mels_post = mels + residual
 
         return (mels, mels_post, mels_len), gates
