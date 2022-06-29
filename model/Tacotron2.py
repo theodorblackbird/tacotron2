@@ -30,12 +30,9 @@ class Encoder(tf.keras.layers.Layer):
                 )
         self.config = config
 
-    def call(self, x):
-
-        mask = x._keras_mask 
+    def call(self, x, mask):
         y = self.encoder_conv(x)
         y = self.bidir_lstm(y, mask=mask)  #propagates mask
-
         return y
 
 class Decoder(tf.keras.layers.Layer):
@@ -86,12 +83,18 @@ class Decoder(tf.keras.layers.Layer):
         att_rnn_in = tf.concat([mel_in, self.lsattention_layer.att_context], -1)
         self.att_hidden, self.att_cell = self.att_rnn(att_rnn_in, self.att_cell)
 
+        self.att_hidden = tf.nn.dropout(self.att_hidden, 
+        self.config["decoder"]["lsattention"]["rnn_dropout_rate"])
+
         self.att_context, alignment = self.lsattention_layer(
                 self.att_hidden, enc_out, W_enc_out, enc_out_mask)
 
         dec_input = tf.concat([self.att_hidden, self.att_context], -1)
 
         self.dec_hidden, self.dec_cell = self.dec_rnn(dec_input, self.dec_cell)
+        
+        self.dec_hidden = tf.nn.dropout(self.dec_hidden,
+                self.config["decoder"]["dec_rnn_dropout_rate"])
 
         dec_hidden_att_context = tf.concat([self.dec_hidden, self.att_context], 1)
 
@@ -189,12 +192,13 @@ class Tacotron2(tf.keras.Model):
         mels = tf.transpose(mels, perm=[0,2,1])
 
         x = self.tokenizer(phon)
-        x = self.char_embedding(x)
-        y = self.encoder(x)
+        y = self.char_embedding(x)
+        mask = self.char_embedding.compute_mask(x)
+        y = self.encoder(y, mask)
 
         crop = tf.shape(mels)[2] - tf.shape(mels)[2]%self.config["n_frames_per_step"]#max_len must be a multiple of n_frames_per_step
         mels_len = tf.clip_by_value(mels_len, 0, crop)
-        mels, gates, alignments = self.decoder(y, mels[:,:,:crop], y._keras_mask)
+        mels, gates, alignments = self.decoder(y, mels[:,:,:crop], mask)
 
         residual = self.decoder.postnet(tf.squeeze(mels,-1))
         mels_post = mels + tf.expand_dims(residual, -1)
@@ -212,6 +216,7 @@ class Tacotron2(tf.keras.Model):
             mels, gate, alignments = self(x, training=True)
             mels, mels_post, mels_len = mels
 
+
             true_mels, true_gate = y
 
             crop = tf.shape(true_mels)[1] - tf.shape(true_mels)[1]%self.config["n_frames_per_step"]#max_len must be a multiple of n_frames_per_step
@@ -225,10 +230,14 @@ class Tacotron2(tf.keras.Model):
 
             mels_mask = tf.sequence_mask(mels_len)
             mels_mask = tf.expand_dims(mels_mask, -1)
+            alignments = tf.where(mels_mask, alignments, [0.])
             mels_mask = tf.expand_dims(mels_mask, -1)
 
             mels = tf.where(mels_mask, mels, [0.])
             mels_post = tf.where(mels_mask, mels_post, [0.])
+            
+            tf.summary.image("mels", tf.transpose(mels, [0,2,1,3]))
+            tf.summary.image("alignments", tf.transpose(tf.expand_dims(alignments, -1), [0,2,1,3]))
 
             mels_mask = tf.broadcast_to(mels_mask, tf.shape(mels))
             
@@ -236,9 +245,6 @@ class Tacotron2(tf.keras.Model):
             post_loss = self.mse_loss(mels_post, true_mels)
             gate_loss = self.bce_logits(true_gate, gate)
             loss = pre_loss + post_loss + gate_loss
-            self.mels = mels
-            self.gate = gate
-            self.alignments = alignments
 
         grads = tape.gradient(loss, self.trainable_weights)
         self.optimizer.apply_gradients(zip(grads, self.trainable_weights))

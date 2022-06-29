@@ -9,11 +9,6 @@ import manage_gpus as gpl
 from datetime import datetime
 
 
-class ImageCallback(tf.keras.callbacks.Callback):
-    def on_batch_end(self, batch, logs=None):
-        if batch%100 == 0:
-            tf.summary.image("mels", self.model.mels)
-            tf.summary.image("alignments", self.model.alignments)
 
 
 if __name__ == "__main__":
@@ -62,7 +57,7 @@ if __name__ == "__main__":
     mse_loss = tf.keras.losses.MeanSquaredError(reduction=tf.keras.losses.Reduction.SUM_OVER_BATCH_SIZE)
     bce_logits = tf.keras.losses.BinaryCrossentropy(from_logits=True)
     tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir="./logs", 
-            update_freq=100)
+            update_freq='batch')
 
     cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=conf["train_data"]["checkpoint_path"],
             verbose=1,
@@ -73,6 +68,5 @@ if __name__ == "__main__":
             batch_size=batch_size,
             epochs=epochs,
             callbacks=[tensorboard_callback,
-                cp_callback,
-                ImageCallback()])
+                cp_callback])
 

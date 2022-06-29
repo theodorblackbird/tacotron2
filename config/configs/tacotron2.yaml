@@ -1,9 +1,10 @@
 train:
-        batch_size: 64
+        batch_size: 32
         epochs: 100
         optimizer: 'adam'
         drop_remainder: True
         len_dataset: 13100
+        clip_norm: 1.0
 
 
 encoder:
@@ -12,10 +13,10 @@ encoder:
         conv_layer:
                 n: 3
                 filter : 5
-                kernel_size : [3]
+                kernel_size : 5
                 dropout_rate: 0.5
         bi_lstm:
-                units: 256
+                units: 128
 
 decoder:
         prenet:
@@ -24,19 +25,21 @@ decoder:
                 dropout_rate: 0.5
         lsattention:
                 rnn_dim: 512
+                rnn_dropout_rate: 0.1
                 embed_dim: 512
                 att_dim: 128
                 att_n_filters: 32
                 att_ker_size: 31
         
-        dec_rnn_units: 1024 
+        dec_rnn_units: 1024
+        dec_rnn_dropout_rate: 0.1
 
         char_embedding_size: 512
 
         postnet:
                 filters: 512
                 n: 5
-                kernel_size: 31
+                kernel_size: 5
                 dropout_rate: 0.1
 
 
@@ -44,10 +47,10 @@ n_mel_channels: 80
 n_frames_per_step: 1
 
 train_data:
-        transcript_path: "/gpfswork/rech/xcz/ukv19jy/mine/tacotron2/preprocess/metadata_pp.csv"
-        audio_dir: "/gpfswork/rech/xcz/ukv19jy/tacotron2/LJSpeech-1.1/wavs"
-        statistics: "/gpfswork/rech/xcz/ukv19jy/mine/tacotron2/preprocess/ljspeech_stats.csv"
-        checkpoint_path: "/gpfswork/rech/xcz/ukv19jy/mine/tacotron2/checkpoint/"
+        transcript_path: "/data/anasynth_nonbp/lemerle/mytacotron/tacotron2/preprocess/metadata_pp.csv"
+        audio_dir: "/data/anasynth_nonbp/lemerle/TTS/LJSpeech-1.1/wavs"
+        statistics: "/data/anasynth_nonbp/lemerle/tacotron2/preprocess/ljspeech_stats.csv"
+        checkpoint_path: "/data/anasynth_nonbp/lemerle/tacotron2/checkpoint/"
 
 mel_spec:
         frame_length: 1024
@@ -57,3 +60,6 @@ mel_spec:
         n_mel_channels: 80
         freq_min: 125
         freq_max: 7600
+
+
+
