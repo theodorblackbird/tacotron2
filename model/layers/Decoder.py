@@ -76,8 +76,9 @@ class LSAttention(Layer):
         att_context = tf.matmul(tf.expand_dims(att_weights, 1), memory)
         att_context = tf.squeeze(att_context)
 
+
         self.cum_att_weights += att_weights
-        return att_context
+        return att_context, alignment
 
 class DecConvLayer(Layer):
     def __init__(self,

@@ -1,3 +1,4 @@
+from ctypes import alignment
 import tensorflow as tf
 from tensorflow.python.ops.gen_array_ops import concat
 from tensorflow.python.ops.math_ops import reduce_mean
@@ -29,8 +30,9 @@ class Encoder(tf.keras.layers.Layer):
                 )
         self.config = config
 
-    def call(self, x, mask):
+    def call(self, x):
 
+        mask = x._keras_mask 
         y = self.encoder_conv(x)
         y = self.bidir_lstm(y, mask=mask)  #propagates mask
 
@@ -84,7 +86,7 @@ class Decoder(tf.keras.layers.Layer):
         att_rnn_in = tf.concat([mel_in, self.lsattention_layer.att_context], -1)
         self.att_hidden, self.att_cell = self.att_rnn(att_rnn_in, self.att_cell)
 
-        self.att_context = self.lsattention_layer(
+        self.att_context, alignment = self.lsattention_layer(
                 self.att_hidden, enc_out, W_enc_out, enc_out_mask)
 
         dec_input = tf.concat([self.att_hidden, self.att_context], -1)
@@ -96,7 +98,7 @@ class Decoder(tf.keras.layers.Layer):
         dec_output = self.lin_proj_dense(dec_hidden_att_context)
         gate_output = self.gate_dense(dec_hidden_att_context)
 
-        return dec_output, gate_output
+        return dec_output, gate_output, alignment
 
     def call(self, enc_out, mel_gt, enc_out_mask):
 
@@ -115,7 +117,8 @@ class Decoder(tf.keras.layers.Layer):
         mel_gt = self.prenet(mel_gt)
 
         mels_size = tf.shape(mel_gt)[0]
-        mels_out, gates_out = tf.TensorArray(tf.float32, size=mels_size), tf.TensorArray(tf.float32, size=mels_size)
+        mels_out, gates_out, alignments = tf.TensorArray(tf.float32, size=mels_size), tf.TensorArray(tf.float32, size=mels_size), tf.TensorArray(tf.float32, size=mels_size)
+
 
 
         self.prepare_decoder(enc_out)
@@ -123,13 +126,16 @@ class Decoder(tf.keras.layers.Layer):
         for i in tf.range(mels_size):
 
             mel_in = mel_gt[i]
-            mel_out, gate_out = self.decode(mel_in, enc_out, self.W_enc_out, enc_out_mask)
+            mel_out, gate_out, alignment = self.decode(mel_in, enc_out, self.W_enc_out, enc_out_mask)
 
             mels_out = mels_out.write(i, mel_out)
             gates_out = gates_out.write(i, gate_out)
+            alignments = alignments.write(i, alignment)
 
         mels_out = mels_out.stack()
         gates_out = gates_out.stack()
+        alignments = alignments.stack()
+        print(tf.shape(alignments))
 
         mels_out = tf.transpose(mels_out, perm=[1,0,2])
         mels_out = tf.reshape(mels_out, [batch_size, -1, self.config["n_mel_channels"], 1])
@@ -185,16 +191,16 @@ class Tacotron2(tf.keras.Model):
         mels = tf.transpose(mels, perm=[0,2,1])
 
         x = self.tokenizer(phon)
-        y = self.char_embedding(x)
-        mask = self.char_embedding.compute_mask(x)
-        y = self.encoder(y)
+        x = self.char_embedding(x)
+        y = self.encoder(x)
 
         crop = tf.shape(mels)[2] - tf.shape(mels)[2]%self.config["n_frames_per_step"]#max_len must be a multiple of n_frames_per_step
         mels_len = tf.clip_by_value(mels_len, 0, crop)
-        mels, gates = self.decoder(y, mels[:,:,:crop], mask)
+        mels, gates = self.decoder(y, mels[:,:,:crop], y._keras_mask)
 
-        residual = self.decoder.postnet(tf.squeeze(mels, -1))
-        mels_post = mels + tf.expand_dims(residual, -1)
+        residual = self.decoder.postnet(mels)
+        mels_post = mels + residual
+
         return (mels, mels_post, mels_len), gates
 
     @staticmethod
