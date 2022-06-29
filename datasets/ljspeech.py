@@ -34,11 +34,6 @@ class ljspeechDataset(object):
         path = self.conf["train_data"]["audio_dir"] + "/"+ name + ".wav"
         raw_audio = tf.io.read_file(path)
         audio, sr = tf.audio.decode_wav(raw_audio)
-        trim_pos = tfio.audio.trim(audio, axis=0, epsilon=0.1)
-        start = trim_pos[0]
-        stop = trim_pos[1]
-        print(start[0], stop)
-        audio = audio[start:stop]
         mel_spec = self.mel_spec_gen(audio)
 
 
