@@ -135,15 +135,13 @@ class Decoder(tf.keras.layers.Layer):
         mels_out = mels_out.stack()
         gates_out = gates_out.stack()
         alignments = alignments.stack()
-        print(tf.shape(alignments))
+        tf.print(tf.shape(alignments))
 
         mels_out = tf.transpose(mels_out, perm=[1,0,2])
         mels_out = tf.reshape(mels_out, [batch_size, -1, self.config["n_mel_channels"], 1])
         gates_out = tf.reshape(gates_out, [batch_size, -1])
 
-
-
-        return mels_out, gates_out
+        return mels_out, gates_out, alignments
 
 class Tacotron2Loss(tf.keras.losses.Loss):
     def __init__(self) -> None:
@@ -196,12 +194,10 @@ class Tacotron2(tf.keras.Model):
 
         crop = tf.shape(mels)[2] - tf.shape(mels)[2]%self.config["n_frames_per_step"]#max_len must be a multiple of n_frames_per_step
         mels_len = tf.clip_by_value(mels_len, 0, crop)
-        mels, gates = self.decoder(y, mels[:,:,:crop], y._keras_mask)
+        mels, gates, alignments = self.decoder(y, mels[:,:,:crop], y._keras_mask)
 
-        residual = self.decoder.postnet(mels)
-        print(tf.shape(residual))
-        print(tf.shape(mel))
-        mels_post = mels + residual
+        residual = self.decoder.postnet(tf.squeeze(mels,-1))
+        mels_post = mels + tf.expand_dims(residual, -1)
 
         return (mels, mels_post, mels_len), gates
 
