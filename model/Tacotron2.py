@@ -135,7 +135,6 @@ class Decoder(tf.keras.layers.Layer):
         mels_out = mels_out.stack()
         gates_out = gates_out.stack()
         alignments = alignments.stack()
-        tf.print(tf.shape(alignments))
 
         mels_out = tf.transpose(mels_out, perm=[1,0,2])
         alignments = tf.transpose(alignments, perm=[1,0,2])
