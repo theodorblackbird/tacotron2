@@ -11,6 +11,9 @@ class MelSpec(tf.keras.layers.Layer):
             num_mel_channels=80,
             freq_min=125,
             freq_max=7600,
+            ref_level_db=20.,
+            min_level_db=-100.,
+            max_norm=4.,
             **kwargs
             ):
         super().__init__(**kwargs)
@@ -21,6 +24,9 @@ class MelSpec(tf.keras.layers.Layer):
         self.num_mel_channels = num_mel_channels
         self.freq_min = freq_min
         self.freq_max = freq_max
+        self.ref_level_db = ref_level_db
+        self.min_level_db = min_level_db
+        self.max_norm = max_norm
 
         self.mel_filterbank = tf.signal.linear_to_mel_weight_matrix(
                 num_mel_bins=self.num_mel_channels,
@@ -41,6 +47,11 @@ class MelSpec(tf.keras.layers.Layer):
         magnitude = tf.abs(stft)
 
         mel = tf.matmul(tf.square(magnitude), self.mel_filterbank)
-        log_mel_spec = tfio.audio.dbscale(mel, top_db=80)
-        return log_mel_spec
+        min_level = tf.math.exp(self.min_level_db / 20. * tf.math.log(10.))
+        log_mel_spec = 20. * tf.math.log(tf.math.maximum(min_level, mel))/tf.math.log(10.)
+        norm_log_mel_spec = log_mel_spec - self.ref_level_db
+        norm_log_mel_spec = (norm_log_mel_spec - self.min_level_db)/-self.min_level_db
+        norm_log_mel_spec = tf.clip_by_value(norm_log_mel_spec, 0., 4.)
+
+        return norm_log_mel_spec
 

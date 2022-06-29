@@ -7,6 +7,8 @@ train:
 train_data:
         transcript_path: "preprocess/metadata_pp.csv"
         audio_dir: "/home/theodor/LJSpeech-1.1/wavs"
+        statistics: "/home/theodor/ircam_tts/preprocess/ljspeech_stats.csv"
+        checkpoint_path: "/home/theodor/ircam_tts/checkpoint/"
 encoder:
         char_embedding_size: 512
 
@@ -53,3 +55,10 @@ mel_spec:
         n_mel_channels: 80
         freq_min: 125
         freq_max: 7600
+        ref_level_db: 20.
+        min_level_db: -100.
+        max_norm: 4.
+
+trimming:
+        on: True
+        epsilon: 10e-4
