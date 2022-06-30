@@ -20,13 +20,13 @@ if __name__ == "__main__":
         os.environ['TF_CPP_MIN_LOG_LEVEL'] = "2"
 
     if platform.node() != "jean-zay3":
-        gpl.get_gpu_lock(gpu_device_id=3, soft=False)
+        gpl.get_gpu_lock(gpu_device_id=2, soft=False)
 
     """
     initialize model
     """
-
-    logdir = "logs/" + datetime.now().strftime("%Y%m%d-%H%M%S")
+    date_now =  datetime.now().strftime("%Y%m%d-%H%M%S")
+    logdir = "logs/" + date_now
 
     file_writer = tf.summary.create_file_writer(logdir + "/metrics")
     file_writer.set_as_default()
@@ -70,7 +70,7 @@ if __name__ == "__main__":
     tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=logdir, 
             update_freq='batch')
 
-    cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=train_conf["data"]["checkpoint_path"],
+    cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=train_conf["data"]["checkpoint_path"] + date_now,
             verbose=1,
             save_weights_only=True)
 
