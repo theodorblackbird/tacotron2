@@ -1,0 +1,15 @@
+train:
+        batch_size: 32
+        epochs: 100
+        optimizer: 'adam'
+        drop_remainder: True
+        len_dataset: 13100
+        clip_norm: 1.0
+
+data:
+        transcript_path: "/data/anasynth_nonbp/lemerle/mytacotron/tacotron2/preprocess/metadata_pp.csv"
+        audio_dir: "/data/anasynth_nonbp/lemerle/TTS/LJSpeech-1.1/wavs"
+        statistics: "/data/anasynth_nonbp/lemerle/tacotron2/preprocess/ljspeech_stats.csv"
+        checkpoint_path: "/data/anasynth_nonbp/lemerle/tacotron2/checkpoint/"
+
+

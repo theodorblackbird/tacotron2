@@ -70,6 +70,23 @@ class Tacotron2Config(BaseConfig):
                 "char_embedding_size" : int
                 },
             }
+
+class TrainConfig(BaseConfig):
+    def __init__(self, path=None, raise_for_required=False, raise_for_unmatched_type=False):
+        super().__init__(path, raise_for_required, raise_for_unmatched_type)
+        required_conf = {
+                "train" : {
+                    "batch_size" : int,
+                    "epochs": int,
+                    "drop_remainder": bool,
+                    "clip_norm": float
+                    },
+                "data": {
+                    "transcript_path": str,
+                    "audio_dir": str,
+                    "checkpoint_path": str,
+                    }
+                }
 if __name__ == "__main__":
     tac2conf = Tacotron2Config("/home/theodor/ircam_tts/config/configs/tacotron2.yaml")
     print(tac2conf["encoder"]["char_embedding_size"])

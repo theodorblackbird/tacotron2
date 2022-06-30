@@ -29,15 +29,15 @@ if __name__ == "__main__":
     file_writer.set_as_default()
 
     conf = Tacotron2Config("config/configs/tacotron2.yaml")
+    train_conf = Tacotron2Config("config/configs/train.yaml")
     tac = Tacotron2(conf)
-    train_conf = conf["train"]
 
     """
     initalize dataset
     """
 
     batch_size = train_conf["batch_size"]
-    ljspeech_text = tf.data.TextLineDataset(conf["train_data"]["transcript_path"])
+    ljspeech_text = tf.data.TextLineDataset(conf["data"]["transcript_path"])
     tac.set_vocabulary(ljspeech_text.map(lambda x : tf.strings.split(x, sep='|')[1])) #initialize tokenizer and char. embedding
     dataset_mapper = ljspeechDataset(conf)
     ljspeech = ljspeech_text.map(dataset_mapper)
@@ -59,7 +59,7 @@ if __name__ == "__main__":
     tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir="./logs", 
             update_freq='batch')
 
-    cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=conf["train_data"]["checkpoint_path"],
+    cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=conf["data"]["checkpoint_path"],
             verbose=1,
             save_weights_only=True)
 
