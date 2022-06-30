@@ -167,12 +167,13 @@ class Tacotron2Loss(tf.keras.losses.Loss):
 
 
 class Tacotron2(tf.keras.Model):
-    def __init__(self, config: Tacotron2Config) -> None:
+    def __init__(self, config: Tacotron2Config, train_conf) -> None:
         super(Tacotron2, self).__init__()
 
         self.tokenizer = tf.keras.layers.TextVectorization(split=self.tv_func)
 
         self.config = config
+        self.train_config = config
 
         self.encoder = Encoder(self.config["encoder"])
         self.decoder = Decoder(self.config)

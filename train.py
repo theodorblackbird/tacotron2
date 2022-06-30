@@ -17,7 +17,7 @@ if __name__ == "__main__":
     if 'TF_CPP_MIN_LOG_LEVEL' not in os.environ:
         os.environ['TF_CPP_MIN_LOG_LEVEL'] = "2"
 
-    gpl.get_gpu_lock(gpu_device_id=2, soft=False)
+    gpl.get_gpu_lock(gpu_device_id=3, soft=False)
 
     """
     initialize model
@@ -28,18 +28,18 @@ if __name__ == "__main__":
     file_writer = tf.summary.create_file_writer(logdir + "/metrics")
     file_writer.set_as_default()
 
-    conf = Tacotron2Config("config/configs/tacotron2.yaml")
-    train_conf = Tacotron2Config("config/configs/train.yaml")
-    tac = Tacotron2(conf)
+    conf = Tacotron2Config("config/configs/tacotron2_in_use.yaml")
+    train_conf = Tacotron2Config("config/configs/train_in_use.yaml")
+    tac = Tacotron2(conf, train_conf)
 
     """
     initalize dataset
     """
 
     batch_size = train_conf["batch_size"]
-    ljspeech_text = tf.data.TextLineDataset(conf["data"]["transcript_path"])
+    ljspeech_text = tf.data.TextLineDataset(train_conf["data"]["transcript_path"])
     tac.set_vocabulary(ljspeech_text.map(lambda x : tf.strings.split(x, sep='|')[1])) #initialize tokenizer and char. embedding
-    dataset_mapper = ljspeechDataset(conf)
+    dataset_mapper = ljspeechDataset(conf, train_conf)
     ljspeech = ljspeech_text.map(dataset_mapper)
 
     """
@@ -59,7 +59,7 @@ if __name__ == "__main__":
     tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir="./logs", 
             update_freq='batch')
 
-    cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=conf["data"]["checkpoint_path"],
+    cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=train_conf["data"]["checkpoint_path"],
             verbose=1,
             save_weights_only=True)
 

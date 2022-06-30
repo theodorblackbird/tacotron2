@@ -4,14 +4,13 @@ import tensorflow_io as tfio
 import numpy as np
 from config.config import Tacotron2Config
 from model.layers.MelSpec import MelSpec
-from os.path import join
-
-
+import librosa
 
 class ljspeechDataset(object):
-    def __init__(self, conf) -> None:
+    def __init__(self, conf, train_conf) -> None:
         super().__init__()
         self.conf = conf
+        self.train_conf = train_conf
         msc = conf["mel_spec"]
         self.mel_spec_gen = MelSpec(
                 msc["frame_length"],
@@ -21,19 +20,23 @@ class ljspeechDataset(object):
                 msc["n_mel_channels"],
                 msc["freq_min"],
                 msc["freq_max"])
-        stats = np.loadtxt(conf["train_data"]["statistics"])
+        stats = np.loadtxt(train_conf["data"]["statistics"])
         self.mean = tf.constant(stats[0:msc["n_mel_channels"]], dtype=tf.float32)
         self.std = tf.math.sqrt(tf.constant(stats[msc["n_mel_channels"]:], dtype=tf.float32))
 
-        
+    
+
     def __call__(self, x):
         
         split = tf.strings.split(x, sep='|')
         name = split[0]
         phon = split[1]
-        path = self.conf["train_data"]["audio_dir"] + "/"+ name + ".wav"
+        path = self.train_conf["data"]["audio_dir"] + "/"+ name + ".wav"
         raw_audio = tf.io.read_file(path)
         audio, sr = tf.audio.decode_wav(raw_audio)
+        audio, _ = tf.py_function(librosa.effects.trim, [audio], [tf.float32, tf.int32])
+
+
         mel_spec = self.mel_spec_gen(audio)
 
 
