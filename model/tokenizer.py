@@ -16,7 +16,7 @@ _vowels = "iyɨʉɯuɪʏʊeøɘəɵɤoɛœɜɞʌɔæɐaɶɑɒᵻ"
 _non_pulmonic_consonants = "ʘɓǀɗǃʄǂɠǁʛ"
 _pulmonic_consonants = "pbtdʈɖcɟkɡqɢʔɴŋɲɳnɱmʙrʀⱱɾɽɸβfvθðszʃʒʂʐçʝxɣχʁħʕhɦɬɮʋɹɻjɰlɭʎʟ"
 _suprasegmentals = "ˈˌːˑ"
-_other_symbols = "ʍwɥʜʢʡɕʑɺɧʲ"
+_other_symbols = "ʍwɥʜʢʡɕʑɺɧʲ "
 _diacrilics = "ɚ˞ɫ"
 _phonemes = _vowels + _non_pulmonic_consonants + _pulmonic_consonants + _suprasegmentals + _other_symbols + _diacrilics
 
@@ -31,6 +31,7 @@ class Tokenizer:
             self.char2id = {v: k for k, v in self.id2char.items()}
         else:
             self.vocab = vocab
+        self.discarded = set()
 
 
 
@@ -40,7 +41,9 @@ class Tokenizer:
             try:
                 z = self.char2id[x]
             except KeyError:
-                print(f"Unknown character \"{x}\", discarding it ...")
+                if x not in self.discarded :
+                    print(f"Unknown character \"{x}\", discarding it ...")
+                    self.discarded.add(x)
                 z = -1;
             if z != -1:
                 res.append(z)

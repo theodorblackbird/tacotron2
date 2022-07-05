@@ -1,71 +1,70 @@
-from tensorflow.data import Dataset
-import tensorflow as tf
-import tensorflow_io as tfio
 import numpy as np
 from config.config import Tacotron2Config
-from model.layers.MelSpec import MelSpec
 import librosa
+from model.layers.MelSpec import MelSpec
+from model.tokenizer import Tokenizer
+import torch
+import os
+class ljspeechDataset(torch.utils.data.Dataset):
 
-class ljspeechDataset(object):
     def __init__(self, conf, train_conf) -> None:
-        super().__init__()
+        self.transcript_path = train_conf["data"]["transcript_path"]
+        self.audio_path = train_conf["data"]["audio_dir"]
         self.conf = conf
-        self.train_conf = train_conf
-        msc = conf["mel_spec"]
-        self.mel_spec_gen = MelSpec(
-                msc["frame_length"],
-                msc["frame_step"],
-                None,
-                msc["sampling_rate"],
-                msc["n_mel_channels"],
-                msc["freq_min"],
-                msc["freq_max"])
-        stats = np.loadtxt(train_conf["data"]["statistics"])
-        self.mean = tf.constant(stats[0:msc["n_mel_channels"]], dtype=tf.float32)
-        self.std = tf.math.sqrt(tf.constant(stats[msc["n_mel_channels"]:], dtype=tf.float32))
-
+        with open(self.transcript_path) as f:
+            self.text = f.readlines()
+        self.tokenizer = Tokenizer()
+        self.melspec = MelSpec()
     
+    def __len__(self):
+        return len(self.transcript_path)
 
-    def __call__(self, x):
+    def __getitem__(self, idx):
+        line = self.text[idx]
+        line = line.split("|")
+        locution_id, locution = line
+        wav_path = os.path.join(self.audio_path, locution_id+".wav")
+        y, sr = librosa.load(wav_path)
+        mel = self.melspec(y)
+        locution = locution.strip()
+        tokens = self.tokenizer.encode(locution)
+
+        return tokens, mel
+
+
+    def collate_fn(self, batch):
+        max_tokens_len = max(map(lambda x: len(x[0]), batch))
+        mel_lens = list(map(lambda x: x[1].shape[1], batch))
+        max_mel_len = max(mel_lens)
+        mels, tokens, gates = [], [], []
+        for t, m in batch :
+            padded_mel = torch.zeros(conf["mel_spec"]["n_mel_channels"], max_mel_len)
+            padded_tokens = torch.zeros(max_tokens_len)
+            padded_gate = torch.ones(max_mel_len)
+
+            padded_mel[:, :m.shape[1]] = torch.from_numpy(m)
+            padded_tokens[:len(t)] = torch.Tensor(t)
+            padded_gate[:m.shape[1]-1] = 0
+
+            mels.append(padded_mel)
+            tokens.append(padded_tokens)
+            gates.append(padded_gate)
+
+        return torch.stack(tokens), torch.stack(mels), torch.stack(gates), mel_lens
+
+
+
+
         
-        split = tf.strings.split(x, sep='|')
-        name = split[0]
-        phon = split[1]
-        path = self.train_conf["data"]["audio_dir"] + "/"+ name + ".wav"
-        raw_audio = tf.io.read_file(path)
-        audio, sr = tf.audio.decode_wav(raw_audio)
-
-        mel_spec = self.mel_spec_gen(audio)
-
-
-        #mel_spec = (mel_spec - self.mean)/self.std
-        crop = tf.shape(mel_spec)[0] - tf.shape(mel_spec)[0]%self.conf["n_frames_per_step"]#max_len must be a multiple of n_frames_per_step
-        mel_len = len(mel_spec)
-        gate = tf.zeros(mel_len-1)
-        gate = tf.concat( (gate, [1.]), axis=0)
-
-        return (phon, mel_spec, mel_len), (mel_spec, gate)
 
 if __name__ == "__main__":
-
-    from model.Tacotron2 import Tacotron2
     import matplotlib.pyplot as plt
-    import numpy as np
-    conf = Tacotron2Config("config/configs/tacotron2_laptop.yaml")
+    conf = Tacotron2Config("config/configs/tacotron2_in_use.yaml")
+    train_conf = Tacotron2Config("config/configs/train.yaml")
+    ds = ljspeechDataset(conf, train_conf)
+    dl = torch.utils.data.DataLoader(ds, batch_size=10, collate_fn=ds.collate_fn)
+    t, m, g, l = next(iter(dl))
 
-    tac = Tacotron2(conf)
-    ljspeech_text = tf.data.TextLineDataset(conf["train_data"]["transcript_path"])
-    dataset_mapper = ljspeechDataset(conf)
-    ljspeech = ljspeech_text.map(dataset_mapper).shuffle(100)
-    x, y = next(iter(ljspeech))
-    phon, mel, gate = x
-    print(mel.shape)
-    mel = tf.transpose(mel)
-    fig, ax = plt.subplots(1)
-    fig.set_figwidth(20)
-    fig.set_figheight(6)
-    ax.imshow(mel)
+    print(l)
+    plt.imshow(m[7])
     plt.show()
-    print(np.max(mel))
-
-

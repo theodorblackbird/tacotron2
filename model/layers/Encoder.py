@@ -1,24 +1,25 @@
-import tensorflow as tf
+import torch
 
-class EncConvLayer(tf.keras.layers.Layer):
+class EncConvLayer(torch.nn.Module):
     def __init__(self,
+            char_embedding_size,
             filters,
             kernel_size,
             dropout_rate) -> None:
         super().__init__()
-        self.conv = tf.keras.layers.Conv1D(
+        padding = (kernel_size - 1) // 2
+        self.conv = torch.nn.Conv1D(
+                char_embedding_size,
                 filters,
                 kernel_size,
-                padding="same")
-        self.bn = tf.keras.layers.BatchNormalization()
-        self.dropout = tf.keras.layers.Dropout(
-                rate=dropout_rate)
-        self.support_masking = True
+                padding=padding)
+        self.bn = torch.nn.BatchNorm1d(filters)
+        self.dropout = torch.nn.Dropout(p=dropout_rate)
     def call(self, x, training=True):
         y = self.conv(x)
-        y = self.bn(y, training=training)
+        y = self.bn(y)
         y = tf.nn.relu(y)
-        y = self.dropout(y, training=training)
+        y = self.dropout(y)
         return y
 
 

@@ -1,33 +1,25 @@
 from ctypes import alignment
-import tensorflow as tf
-from tensorflow.python.ops.gen_array_ops import concat
-from tensorflow.python.ops.math_ops import reduce_mean
 
 from config.config import Tacotron2Config
 from model.layers.Encoder import EncConvLayer
 from model.layers.Decoder import LSAttention, Prenet, Postnet
 from model.layers.MelSpec import MelSpec
-
+import torch
 
 import numpy as np
 
 
-class Encoder(tf.keras.layers.Layer):
+class Encoder(torch.nn.Module):
     def __init__(self, config): 
         super().__init__()
 
-        self.encoder_conv = tf.keras.Sequential([EncConvLayer(
+        self.encoder_conv = torch.nn.Sequential([EncConvLayer(
             config["conv_layer"]["filter"],
             config["conv_layer"]["kernel_size"], 
             config["conv_layer"]["dropout_rate"]) 
             for i in range(config["conv_layer"]["n"])] )
 
-        self.bidir_lstm = tf.keras.layers.Bidirectional(
-                tf.keras.layers.LSTM(
-                    units=config["bi_lstm"]["units"],
-                    return_sequences=True
-                    )
-                )
+        self.bidir_lstm = torch.nn.LSTM()
         self.config = config
 
     def call(self, x, mask):
@@ -146,31 +138,10 @@ class Decoder(tf.keras.layers.Layer):
 
         return mels_out, gates_out, alignments
 
-class Tacotron2Loss(tf.keras.losses.Loss):
-    def __init__(self) -> None:
-        super().__init__()
-        self.mse_loss = tf.keras.losses.MeanSquaredError(reduction=tf.keras.losses.Reduction.SUM_OVER_BATCH_SIZE)
-        self.bce_logits = tf.keras.losses.BinaryCrossentropy(from_logits=True)
 
-    def call(self, y_true, y_pred):
-        print(tf.unstack(y_true))
-        true_mels, true_gate, mels_fac = tf.unstack(y_true)
-        mels, gate = tf.unstack(y_pred)
-        mels, mels_post = tf.unstack(mels)
-
-        loss = (self.mse_loss(mels, true_mels) + \
-                self.mse_loss(mels_post, true_mels)) / mels_fac + \
-                self.bce_logits(true_gate, gate) 
-        return loss
-
-
-
-
-class Tacotron2(tf.keras.Model):
+class Tacotron2(torch.nn.Module):
     def __init__(self, config: Tacotron2Config, train_conf) -> None:
         super(Tacotron2, self).__init__()
-
-        self.tokenizer = tf.keras.layers.TextVectorization(split=self.tv_func)
 
         self.config = config
         self.train_config = config
@@ -178,27 +149,17 @@ class Tacotron2(tf.keras.Model):
         self.encoder = Encoder(self.config["encoder"])
         self.decoder = Decoder(self.config)
 
-        self.mse_loss = tf.keras.losses.MeanSquaredError(reduction=tf.keras.losses.Reduction.SUM_OVER_BATCH_SIZE)
-        self.bce_logits = tf.keras.losses.BinaryCrossentropy(from_logits=True)
-
-    def set_vocabulary(self, dataset, n_batch=64):
-        self.tokenizer.adapt(dataset.batch(n_batch))
-        self.char_embedding = tf.keras.layers.Embedding(self.tokenizer.vocabulary_size(), 
-                self.config["encoder"]["char_embedding_size"],
-                mask_zero=True)
+    def set_vocabulary(self, voc_size, n_batch=64):
+        self.embedding = torch.nn.Embedding(voc_size, self.config["encoder"]["char_embedding_size"])
 
     def call(self, batch, training=False):
 
-        phon, mels, mels_len = batch
+        tokens, mels, gates, mels_len = batch
         mels = tf.transpose(mels, perm=[0,2,1])
-
-        x = self.tokenizer(phon)
-        y = self.char_embedding(x)
-        mask = self.char_embedding.compute_mask(x)
+        y = self.embedding(tokens)
         y = self.encoder(y, mask)
 
-        crop = tf.shape(mels)[2] - tf.shape(mels)[2]%self.config["n_frames_per_step"]#max_len must be a multiple of n_frames_per_step
-        mels_len = tf.clip_by_value(mels_len, 0, crop)
+        crop = mels.shape[2] - mels.shape[2]%self.config["n_frames_per_step"]#max_len must be a multiple of n_frames_per_step
         mels, gates, alignments = self.decoder(y, mels[:,:,:crop], mask)
 
         residual = self.decoder.postnet(tf.squeeze(mels,-1))

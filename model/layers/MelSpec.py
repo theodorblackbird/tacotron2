@@ -1,7 +1,8 @@
-import tensorflow as tf
-import tensorflow_io as tfio
+from librosa import stft
+import librosa
+import numpy as np
 
-class MelSpec(tf.keras.layers.Layer):
+class MelSpec:
     def __init__(
             self,
             frame_length=1024,
@@ -28,30 +29,25 @@ class MelSpec(tf.keras.layers.Layer):
         self.min_level_db = min_level_db
         self.max_norm = max_norm
 
-        self.mel_filterbank = tf.signal.linear_to_mel_weight_matrix(
-                num_mel_bins=self.num_mel_channels,
-                num_spectrogram_bins=self.frame_length // 2 + 1,
-                sample_rate=self.sampling_rate,
-                lower_edge_hertz=self.freq_min,
-                upper_edge_hertz=self.freq_max,
-                )
-    
-    def call(self, audio):
-        stft = tf.signal.stft(
-                tf.squeeze(audio, -1),
+        self.mel_filterbank = librosa.filters.mel(
+                self.sampling_rate,
                 self.frame_length,
-                self.frame_step,
-                self.fft_length,
-                pad_end=True)
-
-        magnitude = tf.abs(stft)
-
-        mel = tf.matmul(tf.square(magnitude), self.mel_filterbank)
-        min_level = tf.math.exp(self.min_level_db / 20. * tf.math.log(10.))
-        log_mel_spec = 20. * tf.math.log(tf.math.maximum(min_level, mel))/tf.math.log(10.)
-        norm_log_mel_spec = log_mel_spec - self.ref_level_db
-        norm_log_mel_spec = (norm_log_mel_spec - self.min_level_db)/-self.min_level_db
-        norm_log_mel_spec = tf.clip_by_value(norm_log_mel_spec, 0., 4.)
-
-        return norm_log_mel_spec
+                n_mels=self.num_mel_channels,
+                fmin=self.freq_min,
+                fmax=self.freq_max)
+    
+    def __call__(self, audio):
+        S = stft(
+                audio,
+                n_fft=self.frame_length,
+                hop_length=self.frame_step,
+                window="hann",
+                center=True,
+                )
+        S = np.dot(self.mel_filterbank, np.abs(S))
+        S = 20. * np.log10(np.maximum(1e-5, S))
+        S = S - self.ref_level_db
+        S = (S - self.min_level_db)/-self.min_level_db
+        S = np.clip(S, 0., 4.)
+        return S
 
