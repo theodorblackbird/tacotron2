@@ -17,7 +17,7 @@ class Encoder(tf.keras.layers.Layer):
         super().__init__()
 
         self.encoder_conv = tf.keras.Sequential([EncConvLayer(
-            config["conv_layer"]["filter"],
+            config["conv_layer"]["char_embedding_size"],
             config["conv_layer"]["kernel_size"], 
             config["conv_layer"]["dropout_rate"]) 
             for i in range(config["conv_layer"]["n"])] )
