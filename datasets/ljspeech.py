@@ -33,7 +33,8 @@ class ljspeechDataset(torch.utils.data.Dataset):
 
 
     def collate_fn(self, batch):
-        max_tokens_len = max(map(lambda x: len(x[0]), batch))
+        tokens_lens = list(map(lambda x: len(x[0]), batch))
+        max_tokens_len = max(tokens_lens)
         mel_lens = list(map(lambda x: x[1].shape[1], batch))
         max_mel_len = max(mel_lens)
         mels, tokens, gates = [], [], []
@@ -50,7 +51,7 @@ class ljspeechDataset(torch.utils.data.Dataset):
             tokens.append(padded_tokens)
             gates.append(padded_gate)
 
-        return torch.stack(tokens), torch.stack(mels), torch.stack(gates), mel_lens
+        return torch.stack(tokens), torch.stack(mels), torch.stack(gates), mel_lens, tokens_lens
 
 
 

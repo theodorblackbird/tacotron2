@@ -3,6 +3,8 @@ from config.config import Tacotron2Config
 
 import os
 import platform
+
+from model.Tacotron2 import Tacotron2
 if platform.node() != "jean-zay3":
     import manage_gpus as gpl
 from datetime import datetime
@@ -29,6 +31,7 @@ if __name__ == "__main__":
 
     conf = Tacotron2Config("config/configs/tacotron2_in_use.yaml")
     train_conf = Tacotron2Config("config/configs/train_in_use.yaml")
+    model = Tacotron2(conf, train_conf)
 
     print("_______TRAIN HP_______")
     print(train_conf["train"])
@@ -50,5 +53,10 @@ if __name__ == "__main__":
 
     epochs = train_conf["train"]["epochs"]
     learning_rate = train_conf["train"]["lr"]
+
+    for x in dl :
+        model.train_step(x)
+
+
 
 

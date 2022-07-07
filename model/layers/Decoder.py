@@ -1,25 +1,29 @@
-from tensorflow.keras.layers import Layer, Dense, Conv1D, BatchNormalization
 from tensorflow.keras import Sequential
 from tensorflow.python.keras.backend import dropout
 from tensorflow.python.keras.layers.core import Dropout
+import torch
+import torch.nn.functional as F
+from torch import nn
 
-import tensorflow as tf
-
-
-class Prenet(Layer):
-    def __init__(self, units, n, dropout_rate):
+class Prenet(nn.Module):
+    def __init__(self, in_feat, units, n, dropout_rate):
         super().__init__()
-        self.layers = Sequential()
-        for i in range(n):
-            self.layers.add(Dense(units, activation='relu'))
-            self.layers.add(Dropout(dropout_rate))
+        self.layers = []
+        self.layers.append(nn.Linear(in_feat, units))
+        self.layers.append(nn.ReLU())
+        self.layers.append(nn.Dropout(dropout_rate))
+        for i in range(n-1):
+            self.layers.append(nn.Linear(units, units))
+            self.layers.append(nn.ReLU())
+            self.layers.append(nn.Dropout(dropout_rate))
+        self.layers = nn.Sequential(*self.layers)
 
-    def call(self, x):
+    def forward(self, x):
         return self.layers(x)
 
-class LSAttention(Layer):
+class LSAttention(nn.Module):
 
-    def __init__(self, 
+    def __init__(self,
             rnn_dim,
             embed_dim,
             att_dim,
@@ -27,83 +31,95 @@ class LSAttention(Layer):
             att_ker_size):
         super(LSAttention, self).__init__()
 
-        self.query_dense = Dense(att_dim, 
+        self.query_dense = nn.Linear(
+                rnn_dim,
+                att_dim, 
                 use_bias=False)
-        self.memory_dense = Dense(att_dim, 
+        self.memory_dense = nn.Linear(
+                embed_dim,
+                att_dim, 
                 use_bias=False)
 
-        self.location_dense = Dense(att_dim,
+        self.location_dense = nn.Linear(
+                att_n_filters,
+                att_dim,
                 use_bias=False)
-        self.location_conv = Conv1D(att_n_filters, 
+        self.location_conv = nn.Conv1D(
+                2,
+                att_n_filters, 
                 att_ker_size,
-                padding='same',
+                padding=int((att_ker_size-1)/2),
                 use_bias=False)
 
-        self.energy_dense = Dense(1, 
+        self.energy_dense = nn.Linear(
+                att_dim,
+                1, 
                 use_bias=False)
 
 
     def prepare_attention(self, batch):
-        batch_size = tf.shape(batch)[0]
-        max_len = tf.shape(batch)[1]
-        encoder_dim = tf.shape(batch)[2]
+        batch_size = batch.shape[0]
+        max_len = batch.shape[1]
+        encoder_dim = batch.shape[2]
 
-        self.att_weights = tf.zeros([batch_size, max_len])
-        self.cum_att_weights = tf.zeros_like(self.att_weights)
-        self.att_context = tf.zeros([batch_size, encoder_dim])
+        self.att_weights = torch.zeros(batch_size, max_len)
+        self.cum_att_weights = torch.zeros_like(self.att_weights)
+        self.att_context = torch.zeros(batch_size, encoder_dim)
     
     def process_memory(self, memory):
         return self.memory_dense(memory)
 
     def alignment_score(self, query, W_memory):
         
-        cat_att_weights = tf.concat([tf.expand_dims(self.att_weights, 1), tf.expand_dims(self.cum_att_weights, 1)],
+        cat_att_weights = torch.concat([self.att_weights.unsqueeze(1), self.cum_att_weights.unsqueeze(1)],
                 1)
-        cat_att_weights = tf.transpose(cat_att_weights, perm=[0,2,1])
+        cat_att_weights = torch.permute(cat_att_weights, (0,2,1))
         
-        W_query = self.query_dense(tf.expand_dims(query, 1))
+        W_query = self.query_dense(query.unsqueeze(1))
         W_att_weights = self.location_conv(cat_att_weights)
         W_att_weights = self.location_dense(W_att_weights)
-        alignment = self.energy_dense(tf.math.tanh(W_query + W_att_weights + W_memory))
-        return tf.squeeze(alignment, axis=-1)
+        alignment = self.energy_dense(torch.tanh(W_query + W_att_weights + W_memory))
+        return alignment.squeeze(-1)
 
-    def call(self, att_hs, memory, W_memory, memory_mask):
+    def forward(self, att_hs, memory, W_memory, memory_mask):
 
 
         alignment = self.alignment_score(att_hs, W_memory)
-        alignment = tf.where(memory_mask, alignment, -float("inf"))
-        att_weights = tf.nn.softmax(alignment, axis=1)
-        att_context = tf.matmul(tf.expand_dims(att_weights, 1), memory)
-        att_context = tf.squeeze(att_context)
+        alignment.data.masked_fill_(memory_mask,-float("inf"))
+        att_weights = F.softmax(alignment, axis=1)
+        att_context = torch.bmm(att_weights.unsqueeze(1), memory)
+        att_context = att_context.squeeze(1)
 
 
         self.cum_att_weights += att_weights
         return att_context, alignment
 
-class DecConvLayer(Layer):
+class DecConvLayer(nn.Module):
     def __init__(self,
+            n_mel_channels
             filters,
             kernel_size,
             dropout_rate) -> None:
         super().__init__()
-        self.conv = Conv1D(
+        self.conv = nn.Conv1D(
+                n_mel_channels
                 filters,
                 kernel_size,
-                padding="same")
-        self.bn = BatchNormalization()
-        self.dropout = Dropout(
-                rate=dropout_rate)
+                padding=int((kernel_size - 1) / 2))
+        self.bn = nn.BatchNorm1d(filters)
+        self.dropout = nn.Dropout(
+                p=dropout_rate)
         self.support_masking = True
-    def call(self, x, training=True):
+    def forward(self, x):
         y = self.conv(x)
-        y = self.bn(y, training=training)
+        y = self.bn(y)
         y = tf.nn.relu(y)
-        y = self.dropout(y, training=training)
+        y = self.dropout(y)
         return y
 
 
-class Postnet(Layer):
-    def __init__(self, 
+class Postnet(nn.Module):
+    def __init__(self,
             filters, 
             n,
             n_mel_channels,
@@ -111,12 +127,19 @@ class Postnet(Layer):
             dropout_rate,
             n_frames_per_step):
         super().__init__()
-        self.layers = Sequential()
+        self.layers = []
         for i in range(0, n):
-            self.layers.add(DecConvLayer(filters, kernel_size, dropout_rate))
-        self.layers.add(Dense(n_mel_channels))
+            self.layers.append(DecConvLayer(
+                n_mel_channels,
+                filters, 
+                kernel_size, 
+                dropout_rate))
+        self.layers.append(nn.Linear(
+            filters,
+            n_mel_channels))
+        self.layers = nn.Sequential(*self.layers)
     
-    def call(self, x):
+    def forward(self, x):
         return self.layers(x)
 
 
