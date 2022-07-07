@@ -33,14 +33,20 @@ class ljspeechDataset(torch.utils.data.Dataset):
 
 
     def collate_fn(self, batch):
-        tokens_lens = list(map(lambda x: len(x[0]), batch))
+        
+        tokens_lens, ids_sorted = torch.sort(
+                torch.IntTensor(list(map(lambda x: len(x[0]), batch))),
+                dim=0,
+                descending=True)
+
         max_tokens_len = max(tokens_lens)
         mel_lens = list(map(lambda x: x[1].shape[1], batch))
         max_mel_len = max(mel_lens)
         mels, tokens, gates = [], [], []
-        for t, m in batch :
-            padded_mel = torch.zeros(conf["mel_spec"]["n_mel_channels"], max_mel_len)
-            padded_tokens = torch.zeros(max_tokens_len)
+        for i in ids_sorted :
+            t, m = batch[i]
+            padded_mel = torch.zeros(self.conf["mel_spec"]["n_mel_channels"], max_mel_len)
+            padded_tokens = torch.zeros(max_tokens_len).int()
             padded_gate = torch.ones(max_mel_len)
 
             padded_mel[:, :m.shape[1]] = torch.from_numpy(m)

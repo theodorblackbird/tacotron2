@@ -1,6 +1,3 @@
-from tensorflow.keras import Sequential
-from tensorflow.python.keras.backend import dropout
-from tensorflow.python.keras.layers.core import Dropout
 import torch
 import torch.nn.functional as F
 from torch import nn
@@ -34,27 +31,27 @@ class LSAttention(nn.Module):
         self.query_dense = nn.Linear(
                 rnn_dim,
                 att_dim, 
-                use_bias=False)
+                bias=False)
         self.memory_dense = nn.Linear(
                 embed_dim,
                 att_dim, 
-                use_bias=False)
+                bias=False)
 
         self.location_dense = nn.Linear(
                 att_n_filters,
                 att_dim,
-                use_bias=False)
-        self.location_conv = nn.Conv1D(
+                bias=False)
+        self.location_conv = nn.Conv1d(
                 2,
                 att_n_filters, 
                 att_ker_size,
                 padding=int((att_ker_size-1)/2),
-                use_bias=False)
+                bias=False)
 
         self.energy_dense = nn.Linear(
                 att_dim,
                 1, 
-                use_bias=False)
+                bias=False)
 
 
     def prepare_attention(self, batch):
@@ -73,10 +70,10 @@ class LSAttention(nn.Module):
         
         cat_att_weights = torch.concat([self.att_weights.unsqueeze(1), self.cum_att_weights.unsqueeze(1)],
                 1)
-        cat_att_weights = torch.permute(cat_att_weights, (0,2,1))
         
         W_query = self.query_dense(query.unsqueeze(1))
         W_att_weights = self.location_conv(cat_att_weights)
+        W_att_weights = W_att_weights.transpose(1,2)
         W_att_weights = self.location_dense(W_att_weights)
         alignment = self.energy_dense(torch.tanh(W_query + W_att_weights + W_memory))
         return alignment.squeeze(-1)
@@ -85,9 +82,13 @@ class LSAttention(nn.Module):
 
 
         alignment = self.alignment_score(att_hs, W_memory)
+        print("alignment", alignment.shape)
         alignment.data.masked_fill_(memory_mask,-float("inf"))
-        att_weights = F.softmax(alignment, axis=1)
+        att_weights = F.softmax(alignment, dim=1)
+        print(att_weights.shape)
+        print(memory.shape)
         att_context = torch.bmm(att_weights.unsqueeze(1), memory)
+        print(att_context.shape)
         att_context = att_context.squeeze(1)
 
 
@@ -96,13 +97,13 @@ class LSAttention(nn.Module):
 
 class DecConvLayer(nn.Module):
     def __init__(self,
-            n_mel_channels
+            n_mel_channels,
             filters,
             kernel_size,
             dropout_rate) -> None:
         super().__init__()
-        self.conv = nn.Conv1D(
-                n_mel_channels
+        self.conv = nn.Conv1d(
+                n_mel_channels,
                 filters,
                 kernel_size,
                 padding=int((kernel_size - 1) / 2))

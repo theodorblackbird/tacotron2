@@ -5,8 +5,10 @@ import os
 import platform
 
 from model.Tacotron2 import Tacotron2
+"""
 if platform.node() != "jean-zay3":
     import manage_gpus as gpl
+"""
 from datetime import datetime
 from datasets.ljspeech import ljspeechDataset
 import torch
@@ -18,9 +20,10 @@ if __name__ == "__main__":
     # silence verbose TF feedback
     if 'TF_CPP_MIN_LOG_LEVEL' not in os.environ:
         os.environ['TF_CPP_MIN_LOG_LEVEL'] = "2"
-
+    """
     if platform.node() != "jean-zay3":
         gpl.get_gpu_lock(gpu_device_id=2, soft=False)
+    """
 
     """
     initialize model
@@ -44,6 +47,7 @@ if __name__ == "__main__":
     batch_size = train_conf["train"]["batch_size"]
 
     ds = ljspeechDataset(conf, train_conf)
+    model.set_vocabulary(len(ds.tokenizer.vocab))
     dl = torch.utils.data.DataLoader(
             ds, 
             batch_size=batch_size, 
