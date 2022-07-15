@@ -62,10 +62,10 @@ class Decoder(torch.nn.Module):
         self.att_rnn = nn.LSTMCell(
                 dc["prenet"]["units"] + ec["bi_lstm"]["units"]*2,
                 dc["lsattention"]["rnn_dim"])
-        self.dec_rnn = nn.LSTMCell(dc["lsattention"]["att_dim"] + ec["bi_lstm"]["units"]*2,
+        self.dec_rnn = nn.LSTMCell(dc["lsattention"]["rnn_dim"] + ec["bi_lstm"]["units"]*2,
                 dc["dec_rnn_units"])
 
-        self.lin_proj_dense = nn.Linear(dc["dec_rnn_units"],
+        self.lin_proj_dense = nn.Linear(dc["dec_rnn_units"] + ec["bi_lstm"]["units"]*2,
                 config["n_mel_channels"] * config["n_frames_per_step"])
         self.gate_dense = nn.Linear(dc["dec_rnn_units"] + ec["bi_lstm"]["units"]*2,
                 1, bias=True)
@@ -104,8 +104,6 @@ class Decoder(torch.nn.Module):
                 self.att_hidden, enc_out, W_enc_out, enc_out_mask)
 
         dec_input = torch.concat((self.att_hidden, self.att_context), -1)
-        print(dec_input.shape)
-        print(self.att_hidden.shape, self.att_context.shape)
 
         self.dec_hidden, self.dec_cell = self.dec_rnn(dec_input,(self.dec_hidden, self.dec_cell))
         
@@ -122,7 +120,6 @@ class Decoder(torch.nn.Module):
     def forward(self, enc_out, mel_gt, tokens_len):
 
         batch_size = mel_gt.shape[0]
-        mel_gt = mel_gt.transpose(1,2)
 
         #first mel frame input
         first_mel_frame = torch.zeros((1, enc_out.shape[0], self.config["n_mel_channels"] * self.config["n_frames_per_step"]))
@@ -161,7 +158,7 @@ class Decoder(torch.nn.Module):
 
         mels_out = mels_out.transpose(1,0)
         alignments = alignments.transpose(1,0)
-        mels_out = mels_out.reshape( (batch_size, -1, self.config["n_mel_channels"], 1))
+        mels_out = mels_out.reshape( (batch_size, -1, self.config["n_mel_channels"], 1)).transpose(1,2)
         gates_out = gates_out.reshape((batch_size, -1))
 
         return mels_out, gates_out, alignments
@@ -181,16 +178,12 @@ class Tacotron2(torch.nn.Module):
         self.embedding = torch.nn.Embedding(voc_size, self.config["encoder"]["char_embedding_size"])
 
     def forward(self, batch):
-
-        tokens, mels, gates, mels_len, tokens_len = batch
-        mels = mels.transpose(1,2)
+    
+        tokens, true_mels, gates, mels_len, tokens_len = batch
         y = self.embedding(tokens)
         y = self.encoder(y, tokens_len)
 
-        crop = mels.shape[2] - mels.shape[2]%self.config["n_frames_per_step"]#max_len must be a multiple of n_frames_per_step
-
-
-        mels, gates, alignments = self.decoder(y, mels[:,:,:crop], tokens_len)
+        mels, gates, alignments = self.decoder(y, true_mels, tokens_len)
 
         residual = self.decoder.postnet(mels.squeeze(-1))
         mels_post = mels + residual.unsqueeze(-1)
@@ -199,16 +192,25 @@ class Tacotron2(torch.nn.Module):
 
 
     def train_step(self, data):
-        tokens, mels, gates, mel_lens, tokens_len = data
+        tokens, true_mels, true_gates, mel_lens, tokens_len = data
         mels, gates, alignments = self(data)
         mels, mels_post, mels_len = mels
-        print("OK!")
 
-
-        crop = true_mels.shape[1] - true_mels.shape[1]%self.config["n_frames_per_step"]#max_len must be a multiple of n_frames_per_step
 
         """
         compute loss
         """
 
-        return {'loss': loss, 'pre_loss' : pre_loss, 'post_loss' : post_loss, 'gate_loss' : gate_loss}
+        criterion = torch.nn.MSELoss()
+        gate_criterion = torch.nn.BCEWithLogitsLoss()
+
+        gate_loss = gate_criterion(gates, true_gates)
+        pre_loss = criterion(mels.squeeze(-1), true_mels)
+        post_loss = criterion(mels_post.squeeze(-1), true_mels)
+
+        loss = pre_loss  + post_loss + gate_loss
+
+
+
+
+        return {'loss': loss, 'pre_loss' : pre_loss, 'post_loss' : post_loss, 'gate_loss' : gate_loss, 'alignments' : alignments, 'mels' : mels, 'true_mels' : true_mels}

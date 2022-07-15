@@ -11,13 +11,23 @@ class ljspeechDataset(torch.utils.data.Dataset):
         self.transcript_path = train_conf["data"]["transcript_path"]
         self.audio_path = train_conf["data"]["audio_dir"]
         self.conf = conf
+        self.n_frames_per_step = conf["n_frames_per_step"]
         with open(self.transcript_path) as f:
             self.text = f.readlines()
         self.tokenizer = Tokenizer()
-        self.melspec = MelSpec()
+        ms = conf["mel_spec"]
+        self.melspec = MelSpec(
+            ms["frame_length"],
+            ms["frame_step"],
+            ms["fft_length"],
+            ms["sampling_rate"],
+            ms["n_mel_channels"],
+            ms["freq_min"],
+            ms["freq_max"],)
+ 
     
     def __len__(self):
-        return len(self.transcript_path)
+        return len(self.text)
 
     def __getitem__(self, idx):
         line = self.text[idx]
@@ -28,6 +38,9 @@ class ljspeechDataset(torch.utils.data.Dataset):
         mel = self.melspec(y)
         locution = locution.strip()
         tokens = self.tokenizer.encode(locution)
+        
+        crop = mel.shape[1] - mel.shape[1]%self.n_frames_per_step
+        mel = mel[:,:crop]
 
         return tokens, mel
 

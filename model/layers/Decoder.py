@@ -67,28 +67,22 @@ class LSAttention(nn.Module):
         return self.memory_dense(memory)
 
     def alignment_score(self, query, W_memory):
+
         
-        cat_att_weights = torch.concat([self.att_weights.unsqueeze(1), self.cum_att_weights.unsqueeze(1)],
-                1)
+        cat_att_weights = torch.concat([self.att_weights.unsqueeze(1), self.cum_att_weights.unsqueeze(1)], dim=1)
         
         W_query = self.query_dense(query.unsqueeze(1))
         W_att_weights = self.location_conv(cat_att_weights)
-        W_att_weights = W_att_weights.transpose(1,2)
-        W_att_weights = self.location_dense(W_att_weights)
+        W_att_weights = self.location_dense(W_att_weights.transpose(1,2))
         alignment = self.energy_dense(torch.tanh(W_query + W_att_weights + W_memory))
         return alignment.squeeze(-1)
 
     def forward(self, att_hs, memory, W_memory, memory_mask):
 
-
         alignment = self.alignment_score(att_hs, W_memory)
-        print("alignment", alignment.shape)
-        alignment.data.masked_fill_(memory_mask,-float("inf"))
+        alignment.data.masked_fill_(~memory_mask,-float("inf"))
         att_weights = F.softmax(alignment, dim=1)
-        print(att_weights.shape)
-        print(memory.shape)
         att_context = torch.bmm(att_weights.unsqueeze(1), memory)
-        print(att_context.shape)
         att_context = att_context.squeeze(1)
 
 
@@ -114,7 +108,7 @@ class DecConvLayer(nn.Module):
     def forward(self, x):
         y = self.conv(x)
         y = self.bn(y)
-        y = tf.nn.relu(y)
+        y = F.relu(y)
         y = self.dropout(y)
         return y
 
@@ -129,20 +123,25 @@ class Postnet(nn.Module):
             n_frames_per_step):
         super().__init__()
         self.layers = []
-        for i in range(0, n):
-            self.layers.append(DecConvLayer(
+        self.layers.append(DecConvLayer(
                 n_mel_channels,
                 filters, 
                 kernel_size, 
                 dropout_rate))
-        self.layers.append(nn.Linear(
+ 
+        for i in range(1, n-1):
+            self.layers.append(DecConvLayer(
+                filters,
+                filters, 
+                kernel_size, 
+                dropout_rate))
+        self.layers.append(DecConvLayer(
             filters,
-            n_mel_channels))
+            n_mel_channels, 
+            kernel_size, 
+            dropout_rate))
+
         self.layers = nn.Sequential(*self.layers)
     
     def forward(self, x):
         return self.layers(x)
-
-
-
-
