@@ -17,7 +17,7 @@ class Encoder(tf.keras.layers.Layer):
         super().__init__()
 
         self.encoder_conv = tf.keras.Sequential([EncConvLayer(
-            config["conv_layer"]["char_embedding_size"],
+            config["char_embedding_size"],
             config["conv_layer"]["kernel_size"], 
             config["conv_layer"]["dropout_rate"]) 
             for i in range(config["conv_layer"]["n"])] )
@@ -108,7 +108,7 @@ class Decoder(tf.keras.layers.Layer):
         batch_size = tf.shape(mel_gt)[0]
 
         #first mel frame input
-        first_mel_frame = tf.zeros([1, tf.shape(enc_out)[0], self.config["n_mel_channels"] * self.config["n_frames_per_step"]])
+        first_mel_frame = tf.zeros([1, batch_size, self.config["n_mel_channels"] * self.config["n_frames_per_step"]])
 
         #reshape mel_gt in order to group frames by reduction factor
         #it implies that given mel spec length is a multiple of n_frames_per_step
@@ -173,7 +173,7 @@ class Tacotron2(tf.keras.Model):
         self.tokenizer = tf.keras.layers.TextVectorization(split=self.tv_func)
 
         self.config = config
-        self.train_config = config
+        self.train_config = train_conf
 
         self.encoder = Encoder(self.config["encoder"])
         self.decoder = Decoder(self.config)
@@ -230,8 +230,9 @@ class Tacotron2(tf.keras.Model):
             true_mels = tf.expand_dims(true_mels, -1)
 
             mels_mask = tf.sequence_mask(mels_len)
+            gate_mask = tf.sequence_mask(mels_len/self.config["n_frames_per_step"])
+
             mels_mask = tf.expand_dims(mels_mask, -1)
-            alignments = tf.where(mels_mask, alignments, [0.])
             mels_mask = tf.expand_dims(mels_mask, -1)
 
             mels = tf.where(mels_mask, mels, [0.])
@@ -244,7 +245,9 @@ class Tacotron2(tf.keras.Model):
             
             pre_loss =  self.mse_loss(mels, true_mels) 
             post_loss = self.mse_loss(mels_post, true_mels)
-            gate_loss = self.bce_logits(true_gate, gate)
+            gate_loss = tf.nn.weighted_cross_entropy_with_logits(true_gate, gate, self.train_config["train"]["bce_weight"])
+            gate_loss = tf.reduce_sum(gate_loss)
+            gate_loss = gate_loss / tf.math.count_nonzero(gate_mask, dtype=tf.float32)
             loss = pre_loss + post_loss + gate_loss
 
         grads = tape.gradient(loss, self.trainable_weights)

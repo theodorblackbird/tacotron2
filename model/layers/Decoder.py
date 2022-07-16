@@ -78,7 +78,7 @@ class LSAttention(Layer):
 
 
         self.cum_att_weights += att_weights
-        return att_context, alignment
+        return att_context, att_weights
 
 class DecConvLayer(Layer):
     def __init__(self,

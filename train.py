@@ -6,8 +6,8 @@ from model.Tacotron2 import Tacotron2, Tacotron2Loss
 
 import os
 import platform
-if platform.node() != "jean-zay3":
-    import manage_gpus as gpl
+#if platform.node() != "jean-zay3":
+#   import manage_gpus as gpl
 from datetime import datetime
 
 
@@ -19,8 +19,8 @@ if __name__ == "__main__":
     if 'TF_CPP_MIN_LOG_LEVEL' not in os.environ:
         os.environ['TF_CPP_MIN_LOG_LEVEL'] = "2"
 
-    if platform.node() != "jean-zay3":
-        gpl.get_gpu_lock(gpu_device_id=2, soft=False)
+    #if platform.node() != "jean-zay3":
+    #    gpl.get_gpu_lock(gpu_device_id=2, soft=False)
 
     """
     initialize model
@@ -56,7 +56,7 @@ if __name__ == "__main__":
     """
 
     ljspeech = ljspeech.padded_batch(batch_size, 
-            padding_values=((None, None, None), (None, 1.)),
+            padding_values=((None, None, None), (None, 0.)),
             drop_remainder=train_conf["train"]["drop_remainder"])
 
     epochs = train_conf["train"]["epochs"]
@@ -74,10 +74,11 @@ if __name__ == "__main__":
             verbose=1,
             save_weights_only=True)
 
-    tac.compile(optimizer=optimizer)
+    tac.compile(optimizer=optimizer,
+            run_eagerly=train_conf["train"]["run_eagerly"])
     tac.fit(ljspeech,
             batch_size=batch_size,
             epochs=epochs,
             callbacks=[tensorboard_callback,
-                cp_callback])
+                cp_callback],)
 

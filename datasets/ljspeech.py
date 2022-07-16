@@ -40,8 +40,11 @@ class ljspeechDataset(object):
 
         #mel_spec = (mel_spec - self.mean)/self.std
         crop = tf.shape(mel_spec)[0] - tf.shape(mel_spec)[0]%self.conf["n_frames_per_step"]#max_len must be a multiple of n_frames_per_step
+
+        mel_spec = mel_spec[:crop, :]
+        
         mel_len = len(mel_spec)
-        gate = tf.zeros(mel_len-1)
+        gate = tf.zeros((mel_len//self.conf["n_frames_per_step"]) -1)
         gate = tf.concat( (gate, [1.]), axis=0)
 
         return (phon, mel_spec, mel_len), (mel_spec, gate)
