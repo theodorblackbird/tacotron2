@@ -238,9 +238,6 @@ class Tacotron2(tf.keras.Model):
             mels = tf.where(mels_mask, mels, [0.])
             mels_post = tf.where(mels_mask, mels_post, [0.])
             
-            tf.summary.image("mels", tf.transpose(mels, [0,2,1,3]))
-            tf.summary.image("alignments", tf.transpose(tf.expand_dims(alignments, -1), [0,2,1,3]))
-
             mels_mask = tf.broadcast_to(mels_mask, tf.shape(mels))
             
             pre_loss =  self.mse_loss(mels, true_mels) 
@@ -253,3 +250,7 @@ class Tacotron2(tf.keras.Model):
         grads = tape.gradient(loss, self.trainable_weights)
         self.optimizer.apply_gradients(zip(grads, self.trainable_weights))
         return {'loss': loss, 'pre_loss' : pre_loss, 'post_loss' : post_loss, 'gate_loss' : gate_loss}
+
+    
+
+ 
