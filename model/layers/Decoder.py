@@ -84,7 +84,8 @@ class DecConvLayer(Layer):
     def __init__(self,
             filters,
             kernel_size,
-            dropout_rate) -> None:
+            dropout_rate,
+            activation=None) -> None:
         super().__init__()
         self.conv = Conv1D(
                 filters,
@@ -94,10 +95,11 @@ class DecConvLayer(Layer):
         self.dropout = Dropout(
                 rate=dropout_rate)
         self.support_masking = True
+        self.activation = tf.keras.layers.Activation(activation)
     def call(self, x, training=True):
         y = self.conv(x)
         y = self.bn(y, training=training)
-        y = tf.nn.relu(y)
+        y = self.activation(y)
         y = self.dropout(y, training=training)
         return y
 
@@ -112,9 +114,9 @@ class Postnet(Layer):
             n_frames_per_step):
         super().__init__()
         self.layers = Sequential()
-        for i in range(0, n):
-            self.layers.add(DecConvLayer(filters, kernel_size, dropout_rate))
-        self.layers.add(Dense(n_mel_channels))
+        for i in range(0, n-1):
+            self.layers.add(DecConvLayer(filters, kernel_size, dropout_rate, activation='tanh'))
+        self.layers.add(DecConvLayer(n_mel_channels, kernel_size, dropout_rate))
     
     def call(self, x):
         return self.layers(x)

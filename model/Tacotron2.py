@@ -85,6 +85,8 @@ class Decoder(tf.keras.layers.Layer):
 
         self.att_hidden = tf.nn.dropout(self.att_hidden, 
         self.config["decoder"]["lsattention"]["rnn_dropout_rate"])
+        self.att_cell = tf.nn.dropout(self.att_cell, 
+        self.config["decoder"]["lsattention"]["rnn_dropout_rate"])
 
         self.att_context, alignment = self.lsattention_layer(
                 self.att_hidden, enc_out, W_enc_out, enc_out_mask)
@@ -99,7 +101,7 @@ class Decoder(tf.keras.layers.Layer):
         dec_hidden_att_context = tf.concat([self.dec_hidden, self.att_context], 1)
 
         dec_output = self.lin_proj_dense(dec_hidden_att_context)
-        gate_output = self.gate_dense(dec_hidden_att_context)
+        gate_output = self.gate_dense(tf.nn.dropout(dec_hidden_att_context, rate=0.1))
 
         return dec_output, gate_output, alignment
 
@@ -116,6 +118,7 @@ class Decoder(tf.keras.layers.Layer):
         mel_gt = tf.reshape(mel_gt, [batch_size, tf.shape(mel_gt)[-1] // self.config["n_frames_per_step"], -1])
         mel_gt = tf.transpose(mel_gt, perm=[1,0,2])
         mel_gt = tf.concat([first_mel_frame, mel_gt[:-1] ], 0)
+        mel_gt = mel_gt[:,:,self.config["n_mel_channels"] * (self.config["n_frames_per_step"] - 1):]
 
         mel_gt = self.prenet(mel_gt)
 
@@ -146,22 +149,6 @@ class Decoder(tf.keras.layers.Layer):
 
         return mels_out, gates_out, alignments
 
-class Tacotron2Loss(tf.keras.losses.Loss):
-    def __init__(self) -> None:
-        super().__init__()
-        self.mse_loss = tf.keras.losses.MeanSquaredError(reduction=tf.keras.losses.Reduction.SUM_OVER_BATCH_SIZE)
-        self.bce_logits = tf.keras.losses.BinaryCrossentropy(from_logits=True)
-
-    def call(self, y_true, y_pred):
-        print(tf.unstack(y_true))
-        true_mels, true_gate, mels_fac = tf.unstack(y_true)
-        mels, gate = tf.unstack(y_pred)
-        mels, mels_post = tf.unstack(mels)
-
-        loss = (self.mse_loss(mels, true_mels) + \
-                self.mse_loss(mels_post, true_mels)) / mels_fac + \
-                self.bce_logits(true_gate, gate) 
-        return loss
 
 
 
@@ -170,7 +157,7 @@ class Tacotron2(tf.keras.Model):
     def __init__(self, config: Tacotron2Config, train_conf) -> None:
         super(Tacotron2, self).__init__()
 
-        self.tokenizer = tf.keras.layers.TextVectorization(split=self.tv_func)
+        self.tokenizer = tf.keras.layers.TextVectorization(split=self.tv_func, standardize=None)
 
         self.config = config
         self.train_config = train_conf
@@ -192,14 +179,13 @@ class Tacotron2(tf.keras.Model):
         phon, mels, mels_len = batch
         mels = tf.transpose(mels, perm=[0,2,1])
 
+
         x = self.tokenizer(phon)
         y = self.char_embedding(x)
         mask = self.char_embedding.compute_mask(x)
         y = self.encoder(y, mask)
 
-        crop = tf.shape(mels)[2] - tf.shape(mels)[2]%self.config["n_frames_per_step"]#max_len must be a multiple of n_frames_per_step
-        mels_len = tf.clip_by_value(mels_len, 0, crop)
-        mels, gates, alignments = self.decoder(y, mels[:,:,:crop], mask)
+        mels, gates, alignments = self.decoder(y, mels, mask)
 
         residual = self.decoder.postnet(tf.squeeze(mels,-1))
         mels_post = mels + tf.expand_dims(residual, -1)
@@ -218,7 +204,7 @@ class Tacotron2(tf.keras.Model):
             mels, mels_post, mels_len = mels
 
 
-            true_mels, true_gate = y
+            true_mels, true_gate, ga_masks = y
 
             crop = tf.shape(true_mels)[1] - tf.shape(true_mels)[1]%self.config["n_frames_per_step"]#max_len must be a multiple of n_frames_per_step
 
@@ -245,11 +231,12 @@ class Tacotron2(tf.keras.Model):
             gate_loss = tf.nn.weighted_cross_entropy_with_logits(true_gate, gate, self.train_config["train"]["bce_weight"])
             gate_loss = tf.reduce_sum(gate_loss)
             gate_loss = gate_loss / tf.math.count_nonzero(gate_mask, dtype=tf.float32)
-            loss = pre_loss + post_loss + gate_loss
+            ga_loss = tf.reduce_sum(alignments * ga_masks) / tf.math.count_nonzero(ga_masks, dtype=tf.float32)
+            loss = pre_loss + post_loss + gate_loss + ga_loss * 5. 
 
         grads = tape.gradient(loss, self.trainable_weights)
         self.optimizer.apply_gradients(zip(grads, self.trainable_weights))
-        return {'loss': loss, 'pre_loss' : pre_loss, 'post_loss' : post_loss, 'gate_loss' : gate_loss}
+        return {'loss': loss, 'pre_loss' : pre_loss, 'post_loss' : post_loss, 'gate_loss' : gate_loss, 'ga_loss' : ga_loss}
 
     
 

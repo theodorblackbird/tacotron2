@@ -23,11 +23,13 @@ class ljspeechDataset(object):
         stats = np.loadtxt(train_conf["data"]["statistics"])
         self.mean = tf.constant(stats[0:msc["n_mel_channels"]], dtype=tf.float32)
         self.std = tf.math.sqrt(tf.constant(stats[msc["n_mel_channels"]:], dtype=tf.float32))
+        self.sigma = 0.4
+        self.gradual_training = tf.constant(train_conf["train"]["gradual_training"])
 
     
 
     def __call__(self, x):
-        
+
         split = tf.strings.split(x, sep='|')
         name = split[0]
         phon = split[1]
@@ -47,7 +49,13 @@ class ljspeechDataset(object):
         gate = tf.zeros((mel_len//self.conf["n_frames_per_step"]) -1)
         gate = tf.concat( (gate, [1.]), axis=0)
 
-        return (phon, mel_spec, mel_len), (mel_spec, gate)
+        X = tf.linspace(0.,1.,tf.strings.length(phon, 'UTF8_CHAR'))
+        Y = tf.linspace(0.,1., mel_len//self.conf["n_frames_per_step"])
+        X, Y = tf.meshgrid(X, Y)
+        ga_mask = 1. - tf.math.exp( -((X-Y)**2) /(2. * (self.sigma**2)))
+
+
+        return (phon, mel_spec, mel_len), (mel_spec, gate, ga_mask)
 
 if __name__ == "__main__":
 

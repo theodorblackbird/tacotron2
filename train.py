@@ -2,7 +2,7 @@ import tensorflow as tf
 
 from config.config import Tacotron2Config
 from datasets.ljspeech import ljspeechDataset
-from model.Tacotron2 import Tacotron2, Tacotron2Loss
+from model.Tacotron2 import Tacotron2
 
 import os
 import platform
@@ -32,18 +32,15 @@ class LossCallback(tf.keras.callbacks.Callback):
         self.cm = tf.constant(matplotlib.cm.get_cmap('viridis').colors, dtype=tf.float32)
 
     def on_train_batch_end(self, batch, logs=None):
-        tf.summary.scalar("loss", logs["loss"], step=self.g_step)
-        tf.summary.scalar("gate_loss", logs["gate_loss"], step=self.g_step)
-        tf.summary.scalar("pre_loss", logs["pre_loss"], step=self.g_step)
-        tf.summary.scalar("post_loss", logs["post_loss"], step=self.g_step)
-        self.g_step += 1
+        for key in logs.keys():
+            tf.summary.scalar(key, logs[key], step=self.g_step)
         if self.g_step%self.model.train_config["train"]["plot_every_n_batches"] == 0:
             x, y = next(iter(self.ds))
             mels, gate, alignments = self.model(x, training=True)
             mels, mels_post, mels_len = mels
 
 
-            true_mels, true_gate = y
+            true_mels, true_gate, ga_mask = y
 
             true_mels = tf.expand_dims(true_mels, -1)
 
@@ -57,24 +54,30 @@ class LossCallback(tf.keras.callbacks.Callback):
             mels_post = tf.where(mels_mask, mels_post, [0.])
 
             alignments = tf.expand_dims(alignments, -1)
+            ga_mask = tf.expand_dims(ga_mask, -1)
             
             normalize = lambda x: (x - tf.math.reduce_min(x))/(tf.math.reduce_max(x) - tf.math.reduce_min(x))
 
             mels_image = tf.squeeze(normalize(tf.transpose(mels, [0,2,1,3]))*255)
             true_mels_image = tf.squeeze(normalize(tf.transpose(true_mels, [0,2,1,3]))*255)
             alignments_image = tf.squeeze(normalize(tf.transpose(alignments, [0,2,1,3]))*255)
+            ga_mask_image = tf.squeeze(normalize(tf.transpose(ga_mask, [0,2,1,3]))*255)
 
             mels_image = tf.cast(tf.round(mels_image), dtype=tf.int32)
             true_mels_image = tf.cast(tf.round(true_mels_image), dtype=tf.int32)
             alignments_image = tf.cast(tf.round(alignments_image), dtype=tf.int32)
+            ga_mask_image = tf.cast(tf.round(ga_mask_image), dtype=tf.int32)
 
             mels_image = tf.gather(self.cm, mels_image)
             true_mels_image = tf.gather(self.cm, true_mels_image)
             alignments_image = tf.gather(self.cm, alignments_image)
+            ga_mask_image = tf.gather(self.cm, ga_mask_image)
 
             tf.summary.image("mels", mels_image, step=self.g_step)
             tf.summary.image("true_mels", true_mels_image, step=self.g_step)
             tf.summary.image("alignments", alignments_image, step=self.g_step)
+            tf.summary.image("ga_mask", ga_mask_image, step=self.g_step)
+        self.g_step += 1
 
 
 
@@ -99,6 +102,10 @@ if __name__ == "__main__":
     conf = Tacotron2Config("config/configs/tacotron2_in_use.yaml")
     train_conf = Tacotron2Config("config/configs/train_in_use.yaml")
     tac = Tacotron2(conf, train_conf)
+    callbacks = []
+
+    print("START : ", date_now)
+    print("______________________")
 
     print("_______TRAIN HP_______")
     pprint(train_conf["train"])
@@ -120,12 +127,12 @@ if __name__ == "__main__":
         input : (phonem, mel spec), output : (mel spec, gate)
     """
     eval_ljspeech =ljspeech.padded_batch(batch_size, 
-            padding_values=((None, None, None), (None, 0.)),
+            padding_values=((None, None, None), (None, 0., 0.)),
             drop_remainder=train_conf["train"]["drop_remainder"])
     loss_callback = LossCallback(eval_ljspeech)
 
     ljspeech = ljspeech.padded_batch(batch_size, 
-            padding_values=((None, None, None), (None, 0.)),
+            padding_values=((None, None, None), (None, 0., 0.)),
             drop_remainder=train_conf["train"]["drop_remainder"])
 
     epochs = train_conf["train"]["epochs"]
@@ -139,14 +146,17 @@ if __name__ == "__main__":
 
     mse_loss = tf.keras.losses.MeanSquaredError(reduction=tf.keras.losses.Reduction.SUM_OVER_BATCH_SIZE)
     bce_logits = tf.keras.losses.BinaryCrossentropy(from_logits=True)
-    tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=logdir, 
-            update_freq='batch')
 
-    cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=train_conf["data"]["checkpoint_path"] + date_now,
+    if train_conf["train"]["tensorboard"]:
+        callbacks.append(tf.keras.callbacks.TensorBoard(log_dir=logdir, 
+            update_freq='batch'))
+
+    callbacks.append(tf.keras.callbacks.ModelCheckpoint(filepath=train_conf["data"]["checkpoint_path"] + date_now,
             monitor='loss',
             verbose=1,
             save_weights_only=True,
-            save_best_only=True,)
+            save_best_only=True,))
+    callbacks.append(LossCallback(eval_ljspeech))
 
     tac.compile(optimizer=optimizer,
             run_eagerly=train_conf["train"]["run_eagerly"])
@@ -154,7 +164,5 @@ if __name__ == "__main__":
     tac.fit(ljspeech,
             batch_size=batch_size,
             epochs=epochs,
-            callbacks=[tensorboard_callback,
-                cp_callback,
-                loss_callback],)
+            callbacks=callbacks)
 
